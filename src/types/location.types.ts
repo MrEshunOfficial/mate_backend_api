@@ -51,3 +51,4 @@ export interface BrowseLocationContext {
   expandedRadiusKm?: number;     // set after client hits "load more"
   isExpanded: boolean;
 }
+

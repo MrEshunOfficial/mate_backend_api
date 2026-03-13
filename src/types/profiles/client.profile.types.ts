@@ -142,3 +142,4 @@ export interface ClientProfileDetailedResponse extends ClientProfileResponse {
     overallVerified: boolean;
   };
 }
+

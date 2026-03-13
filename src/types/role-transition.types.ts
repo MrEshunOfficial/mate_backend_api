@@ -142,3 +142,4 @@ export interface RoleTransitionResponse {
   >;
   error?: string;
 }
+

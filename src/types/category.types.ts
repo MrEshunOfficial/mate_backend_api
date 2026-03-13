@@ -38,3 +38,4 @@ export interface CategoryObject extends Category {
   subcategories?: CategoryObject[];
   services?: Service[];
 }
+

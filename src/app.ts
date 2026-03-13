@@ -7,6 +7,27 @@ import {
   CloudinaryConfigService,
   initCloudinaryService,
 } from "./config/cloudinary.config";
+import authRoutes from "./routes/auth/auth.routes";
+import oauthRoutes from "./routes/auth/oauth.routes";
+import filesRoutes from "./routes/files/profilePicture.routes";
+import profileRoutes from "./routes/profiles/core.profile.routes";
+import categoryCoverRoutes from "./routes/files/categoryCover.routes";
+import serviceCategoryRoutes from "./routes/services/service.categories/service.category.routes";
+import serviceCoverRoutes from "./routes/files/serviceCover.routes";
+import serviceRoutes from "./routes/services/service.routes";
+import { startDeletionScheduler } from "./jobs/accountDeletionJob";
+import accountDeletionRoutes from "./routes/auth/account-deletion.routes";
+import { startServiceActivationScheduler } from "./jobs/serviceActivationJob";
+import providerProfileRoutes from "./routes/profiles/provider.profile.routes";
+import providerImagesRoutes from "./routes/files/providerImages.routes";
+import clientIdImageRoutes from "./routes/files/clientIdImage.routes";
+import clientProfileRoutes from "./routes/profiles/client.profile.routes";
+import taskRoutes from "./routes/tasks/task.routes";
+import bookingRoutes from "./routes/booking/booking.routes";
+import serviceRequestRoutes from "./routes/service-request/service-request.routes";
+import taskAttachmentRoutes from "./routes/files/taskAttachment.routes";
+import { taskMatchingService } from "./service/tasks/task.matching.service";
+import bookingAttachmentRoutes from './routes/files/bookingAttachment.routes';
 
 dotenv.config();
 
@@ -32,11 +53,46 @@ app.use(cookieParser());
 app.use("/uploads/public", express.static("uploads/public"));
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
-// Mount your routers here, e.g.:
-// app.use("/api/auth", authRouter);
+
+// auth routes
+app.use("/api/auth", authRoutes);
+app.use("/api/oauth", oauthRoutes);
+app.use("/api/account/deletion", accountDeletionRoutes);
+
+// user profile routes
+app.use("/api/profile", profileRoutes);
+app.use("/api/profile-picture", filesRoutes);
+
+// provider profile routes
+app.use("/api/providers", providerProfileRoutes);
+app.use("/api/provider-files", providerImagesRoutes);
+
+// client profile routes
+app.use("/api/client-files", clientIdImageRoutes);
+app.use("/api/clients", clientProfileRoutes);
+
+// category routes
+app.use("/api/category", serviceCategoryRoutes);
+app.use("/api/category-cover", categoryCoverRoutes);
+
+// service routes
+app.use("/api/services-cover", serviceCoverRoutes);
+app.use("/api/services", serviceRoutes);
+
+// marketplace routes
+app.use("/api/service-requests", serviceRequestRoutes);
+app.use("/api/bookings", bookingRoutes);
+app.use("/api/tasks", taskRoutes);
+
+// file attachment routes
+app.use("/api/task-files", taskAttachmentRoutes);
+app.use("/api/booking-files", bookingAttachmentRoutes);
+
+// ─── Scheduled Jobs ───────────────────────────────────────────────────────────
+startDeletionScheduler();
+startServiceActivationScheduler();
 
 // ─── Error Middleware ─────────────────────────────────────────────────────────
-
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   if (isDevelopment) {
     console.error(err.stack);
@@ -87,10 +143,16 @@ let cloudinaryService: CloudinaryConfigService;
 
 async function startServer(): Promise<void> {
   await connectDB();
+
+  // Must run after DB connection — bindToModel registers Mongoose middleware
+  // (change streams / post-save hooks) that require an active connection.
+  taskMatchingService.bindToModel();
   cloudinaryService = initCloudinaryService();
 
   const server = app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT} [${isDevelopment ? "development" : "production"}]`);
+    console.log(`connection successful,
+      Server running on port ${PORT},
+      [${isDevelopment ? "development" : "production"}]`);
   });
 
   // ─── Graceful Shutdown ───────────────────────────────────────────────────────
