@@ -14,8 +14,12 @@ import { BookingStatus } from "../../types/bookings.types";
 import { TaskStatus } from "../../types/tasks.types";
 import { Coordinates, UserLocation } from "../../types/location.types";
 import { ImageLinkingService } from "../files/imageLinkingService";
-import { LocationService, LocationEnrichmentInput, WithDistance, 
-  locationService as defaultLocationService} from "../location.service";
+import {
+  LocationService,
+  LocationEnrichmentInput,
+  WithDistance,
+  locationService as defaultLocationService,
+} from "../location.service";
 
 // ─── Local Types ──────────────────────────────────────────────────────────────
 
@@ -68,7 +72,7 @@ export class ClientProfileService {
    * All other callers use the module-level singleton.
    */
   constructor(
-    private readonly locationService: LocationService = defaultLocationService
+    private readonly locationService: LocationService = defaultLocationService,
   ) {
     this.imageLinkingService = new ImageLinkingService();
   }
@@ -80,9 +84,10 @@ export class ClientProfileService {
    */
   async getClientProfileById(
     profileId: string,
-    populate: boolean = false
+    populate: boolean = false,
   ): Promise<ClientProfile | null> {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
 
     const query = ClientProfileModel.findOne({
       _id: new Types.ObjectId(profileId),
@@ -93,7 +98,10 @@ export class ClientProfileService {
       query
         .populate("profile", "userId role bio mobileNumber profilePictureId")
         .populate("favoriteServices", "title slug isActive servicePricing")
-        .populate("favoriteProviders", "businessName providerContactInfo locationData");
+        .populate(
+          "favoriteProviders",
+          "businessName providerContactInfo locationData",
+        );
     }
 
     return (await query.lean()) as ClientProfile | null;
@@ -105,7 +113,7 @@ export class ClientProfileService {
    */
   async getClientProfileByProfileRef(
     userProfileId: string,
-    populate: boolean = false
+    populate: boolean = false,
   ): Promise<ClientProfile | null> {
     if (!Types.ObjectId.isValid(userProfileId)) {
       throw new Error("Invalid user profile ID");
@@ -120,7 +128,10 @@ export class ClientProfileService {
       query
         .populate("profile", "userId role bio mobileNumber profilePictureId")
         .populate("favoriteServices", "title slug isActive servicePricing")
-        .populate("favoriteProviders", "businessName providerContactInfo locationData");
+        .populate(
+          "favoriteProviders",
+          "businessName providerContactInfo locationData",
+        );
     }
 
     return (await query.lean()) as ClientProfile | null;
@@ -135,22 +146,23 @@ export class ClientProfileService {
   async updateClientProfile(
     profileId: string,
     updates: Partial<ClientProfile>,
-    _updatedBy: string
+    _updatedBy: string,
   ): Promise<ClientProfile | null> {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
 
     const {
-      profile:     _profile,
-      isDeleted:   _isDeleted,
-      deletedAt:   _deletedAt,
-      deletedBy:   _deletedBy,
+      profile: _profile,
+      isDeleted: _isDeleted,
+      deletedAt: _deletedAt,
+      deletedBy: _deletedBy,
       ...safeUpdates
     } = updates as any;
 
     const updated = await ClientProfileModel.findOneAndUpdate(
       { _id: new Types.ObjectId(profileId), isDeleted: false },
       { $set: safeUpdates },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     ).lean();
 
     if (!updated) throw new Error("Client profile not found");
@@ -159,9 +171,10 @@ export class ClientProfileService {
 
   async deleteClientProfile(
     profileId: string,
-    deletedBy?: string
+    deletedBy?: string,
   ): Promise<boolean> {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
 
     const profile = (await ClientProfileModel.findOne({
       _id: new Types.ObjectId(profileId),
@@ -171,26 +184,27 @@ export class ClientProfileService {
     if (!profile) throw new Error("Client profile not found");
 
     await profile.softDelete(
-      deletedBy ? new Types.ObjectId(deletedBy) : undefined
+      deletedBy ? new Types.ObjectId(deletedBy) : undefined,
     );
     return true;
   }
 
-  async restoreClientProfile(
-    profileId: string
-  ): Promise<ClientProfile | null> {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
+  async restoreClientProfile(profileId: string): Promise<ClientProfile | null> {
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
 
     const profile = (await ClientProfileModel.findOne(
       { _id: new Types.ObjectId(profileId), isDeleted: true },
       null,
-      { includeSoftDeleted: true }
+      { includeSoftDeleted: true },
     )) as ClientProfileDocument | null;
 
     if (!profile) throw new Error("Deleted client profile not found");
 
     await profile.restore();
-    return (await ClientProfileModel.findById(profileId).lean()) as ClientProfile | null;
+    return (await ClientProfileModel.findById(
+      profileId,
+    ).lean()) as ClientProfile | null;
   }
 
   // ─── Onboarding: Isolated Field Updates ──────────────────────────────────────
@@ -201,9 +215,10 @@ export class ClientProfileService {
    */
   async updateContactInfo(
     profileId: string,
-    contactData: Partial<ClientProfile["clientContactInfo"]>
+    contactData: Partial<ClientProfile["clientContactInfo"]>,
   ): Promise<ClientProfile | null> {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
 
     if (
       contactData.primaryContact !== undefined &&
@@ -215,7 +230,7 @@ export class ClientProfileService {
     const updated = await ClientProfileModel.findOneAndUpdate(
       { _id: new Types.ObjectId(profileId), isDeleted: false },
       { $set: { clientContactInfo: contactData } },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     ).lean();
 
     if (!updated) throw new Error("Client profile not found");
@@ -230,9 +245,10 @@ export class ClientProfileService {
     data: {
       preferredName?: string;
       dateOfBirth?: Date;
-    }
+    },
   ): Promise<ClientProfile | null> {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
 
     if (data.preferredName !== undefined) {
       const trimmed = data.preferredName.trim();
@@ -243,7 +259,7 @@ export class ClientProfileService {
     const updated = await ClientProfileModel.findOneAndUpdate(
       { _id: new Types.ObjectId(profileId), isDeleted: false },
       { $set: data },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     ).lean();
 
     if (!updated) throw new Error("Client profile not found");
@@ -261,7 +277,8 @@ export class ClientProfileService {
     isReady: boolean;
     missingFields: string[];
   }> {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
 
     const profile = (await ClientProfileModel.findOne({
       _id: new Types.ObjectId(profileId),
@@ -270,9 +287,9 @@ export class ClientProfileService {
 
     if (!profile) throw new Error("Client profile not found");
 
-    const missingFields = READY_REQUIRED_RULES
-      .filter((rule) => !rule.check(profile))
-      .map((rule) => rule.message);
+    const missingFields = READY_REQUIRED_RULES.filter(
+      (rule) => !rule.check(profile),
+    ).map((rule) => rule.message);
 
     return {
       isReady: missingFields.length === 0,
@@ -295,9 +312,10 @@ export class ClientProfileService {
    */
   async addSavedAddress(
     profileId: string,
-    input: LocationEnrichmentInput & { label?: string }
+    input: LocationEnrichmentInput & { label?: string },
   ): Promise<{ profile: ClientProfile; missingFields: string[] }> {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
 
     const enriched = await this.locationService.enrichLocation(input);
 
@@ -314,7 +332,7 @@ export class ClientProfileService {
     const updated = await ClientProfileModel.findOneAndUpdate(
       { _id: new Types.ObjectId(profileId), isDeleted: false },
       { $push: { savedAddresses: newAddress } },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     ).lean();
 
     if (!updated) throw new Error("Client profile not found");
@@ -332,10 +350,12 @@ export class ClientProfileService {
   async updateSavedAddress(
     profileId: string,
     addressId: string,
-    input: LocationEnrichmentInput & { label?: string }
+    input: LocationEnrichmentInput & { label?: string },
   ): Promise<{ profile: ClientProfile; missingFields: string[] }> {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
-    if (!Types.ObjectId.isValid(addressId)) throw new Error("Invalid address ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(addressId))
+      throw new Error("Invalid address ID");
 
     const enriched = await this.locationService.enrichLocation(input);
 
@@ -362,7 +382,7 @@ export class ClientProfileService {
         "savedAddresses._id": new Types.ObjectId(addressId),
       },
       { $set: updatedFields },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     ).lean();
 
     if (!updated) throw new Error("Address not found or profile not found");
@@ -382,10 +402,12 @@ export class ClientProfileService {
    */
   async removeSavedAddress(
     profileId: string,
-    addressId: string
+    addressId: string,
   ): Promise<ClientProfile | null> {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
-    if (!Types.ObjectId.isValid(addressId)) throw new Error("Invalid address ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(addressId))
+      throw new Error("Invalid address ID");
 
     const profile = (await ClientProfileModel.findOne({
       _id: new Types.ObjectId(profileId),
@@ -394,17 +416,17 @@ export class ClientProfileService {
 
     if (!profile) throw new Error("Client profile not found");
 
-  const removedIdx = (profile.savedAddresses as SavedAddress[] ?? []).findIndex(
-  (a) => a._id?.toString() === addressId
-  );
+    const removedIdx = (
+      (profile.savedAddresses as SavedAddress[]) ?? []
+    ).findIndex((a) => a._id?.toString() === addressId);
 
     if (removedIdx === -1) throw new Error("Address not found");
 
-    const pullResult = await ClientProfileModel.findOneAndUpdate(
+    const pullResult = (await ClientProfileModel.findOneAndUpdate(
       { _id: new Types.ObjectId(profileId), isDeleted: false },
       { $pull: { savedAddresses: { _id: new Types.ObjectId(addressId) } } },
-      { new: true }
-    ).lean() as ClientProfile | null;
+      { new: true },
+    ).lean()) as ClientProfile | null;
 
     if (!pullResult) throw new Error("Client profile not found");
 
@@ -425,7 +447,7 @@ export class ClientProfileService {
       return (await ClientProfileModel.findOneAndUpdate(
         { _id: new Types.ObjectId(profileId), isDeleted: false },
         { defaultAddressIndex: newDefault },
-        { new: true }
+        { new: true },
       ).lean()) as ClientProfile | null;
     }
 
@@ -438,9 +460,10 @@ export class ClientProfileService {
    */
   async setDefaultAddress(
     profileId: string,
-    index: number
+    index: number,
   ): Promise<ClientProfile | null> {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
 
     const profile = (await ClientProfileModel.findOne({
       _id: new Types.ObjectId(profileId),
@@ -455,14 +478,14 @@ export class ClientProfileService {
     if (index < 0 || index >= count) {
       throw new Error(
         `Invalid default address index ${index}. ` +
-        `Must be between 0 and ${count - 1}.`
+          `Must be between 0 and ${count - 1}.`,
       );
     }
 
     const updated = await ClientProfileModel.findOneAndUpdate(
       { _id: new Types.ObjectId(profileId), isDeleted: false },
       { defaultAddressIndex: index },
-      { new: true }
+      { new: true },
     ).lean();
 
     if (!updated) throw new Error("Client profile not found");
@@ -474,14 +497,18 @@ export class ClientProfileService {
    * Convenience method for the booking flow when it needs the service location.
    */
   async getDefaultAddress(profileId: string): Promise<SavedAddress | null> {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
 
     const profile = (await ClientProfileModel.findOne({
       _id: new Types.ObjectId(profileId),
       isDeleted: false,
     })
       .select("savedAddresses defaultAddressIndex")
-      .lean()) as Pick<ClientProfile, "savedAddresses" | "defaultAddressIndex"> | null;
+      .lean()) as Pick<
+      ClientProfile,
+      "savedAddresses" | "defaultAddressIndex"
+    > | null;
 
     if (!profile) throw new Error("Client profile not found");
 
@@ -522,7 +549,7 @@ export class ClientProfileService {
         isAlwaysAvailable?: boolean;
       };
       limit?: number;
-    } = {}
+    } = {},
   ): Promise<{
     providers: WithDistance<ProviderProfile>[];
     referenceAddress: SavedAddress | null;
@@ -530,7 +557,8 @@ export class ClientProfileService {
   }> {
     const { addressIndex, radiusKm = 20, filters = {}, limit = 20 } = options;
 
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
 
     // Resolve the reference address
     const profile = (await ClientProfileModel.findOne({
@@ -538,14 +566,17 @@ export class ClientProfileService {
       isDeleted: false,
     })
       .select("savedAddresses defaultAddressIndex")
-      .lean()) as Pick<ClientProfile, "savedAddresses" | "defaultAddressIndex"> | null;
+      .lean()) as Pick<
+      ClientProfile,
+      "savedAddresses" | "defaultAddressIndex"
+    > | null;
 
     if (!profile) throw new Error("Client profile not found");
 
-    const addresses  = profile.savedAddresses ?? [];
-    const idx        = addressIndex ?? (profile.defaultAddressIndex ?? 0);
+    const addresses = profile.savedAddresses ?? [];
+    const idx = addressIndex ?? profile.defaultAddressIndex ?? 0;
     const refAddress = addresses[idx] ?? null;
-    const from       = refAddress?.gpsCoordinates ?? null;
+    const from = refAddress?.gpsCoordinates ?? null;
 
     // Build the provider candidate query — apply optional filters at DB level
     // to reduce the set before Haversine is run in application memory
@@ -572,13 +603,13 @@ export class ClientProfileService {
       from,
       candidates as unknown as ProviderProfile[],
       (p) => p.locationData?.gpsCoordinates,
-      radiusKm
+      radiusKm,
     );
 
     return {
-      providers:        nearby.slice(0, limit),
+      providers: nearby.slice(0, limit),
       referenceAddress: refAddress,
-      total:            nearby.length,
+      total: nearby.length,
     };
   }
 
@@ -592,17 +623,21 @@ export class ClientProfileService {
   async attachDistancesFromClient(
     profileId: string,
     providers: ProviderProfile[],
-    addressIndex?: number
+    addressIndex?: number,
   ): Promise<WithDistance<ProviderProfile>[]> {
     const address = await this.getDefaultAddress(profileId);
 
     const from: Coordinates | null =
       addressIndex !== undefined
-        ? ((await ClientProfileModel.findOne(
-            { _id: new Types.ObjectId(profileId), isDeleted: false }
-          ).select("savedAddresses").lean()) as any)?.savedAddresses?.[addressIndex]
-            ?.gpsCoordinates ?? null
-        : address?.gpsCoordinates ?? null;
+        ? ((
+            (await ClientProfileModel.findOne({
+              _id: new Types.ObjectId(profileId),
+              isDeleted: false,
+            })
+              .select("savedAddresses")
+              .lean()) as any
+          )?.savedAddresses?.[addressIndex]?.gpsCoordinates ?? null)
+        : (address?.gpsCoordinates ?? null);
 
     return this.locationService
       .attachDistances(from, providers, (p) => p.locationData?.gpsCoordinates)
@@ -642,24 +677,25 @@ export class ClientProfileService {
         [key: string]: any;
       }>;
     },
-    providerDocs: Map<string, ProviderProfile>
+    providerDocs: Map<string, ProviderProfile>,
   ): Promise<typeof task.matchedProviders> {
     // Prefer the live GPS fix from the moment the task was posted,
     // fall back to the registered address coordinates
     const gpsAtPosting = task.locationContext.gpsLocationAtPosting;
     const from: Coordinates | null = gpsAtPosting
       ? { latitude: gpsAtPosting.latitude, longitude: gpsAtPosting.longitude }
-      : task.locationContext.registeredLocation?.gpsCoordinates ?? null;
+      : (task.locationContext.registeredLocation?.gpsCoordinates ?? null);
 
     return task.matchedProviders.map((match) => {
       const provider = providerDocs.get(match.providerId.toString());
-      const to       = provider?.locationData?.gpsCoordinates ?? null;
+      const to = provider?.locationData?.gpsCoordinates ?? null;
 
       return {
         ...match,
-        distanceKm: from && to
-          ? this.locationService.calculateDistance(from, to)
-          : undefined,
+        distanceKm:
+          from && to
+            ? this.locationService.calculateDistance(from, to)
+            : undefined,
       };
     });
   }
@@ -681,9 +717,10 @@ export class ClientProfileService {
   async updateIdImages(
     profileId: string,
     fileIds: Types.ObjectId[],
-    _uploadedBy: string
+    _uploadedBy: string,
   ): Promise<ClientProfile | null> {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
     if (!fileIds.length) throw new Error("At least one file ID is required");
 
     const profile = (await ClientProfileModel.findOne({
@@ -697,7 +734,7 @@ export class ClientProfileService {
     if (!profile.idDetails?.idType) {
       throw new Error(
         "ID document details (type and number) must be set before uploading ID images. " +
-        "Call updateClientProfile() with idDetails first."
+          "Call updateClientProfile() with idDetails first.",
       );
     }
 
@@ -709,7 +746,7 @@ export class ClientProfileService {
       profileId,
       "client_id_image",
       "idDetails.fileImageId",
-      fileIds[0] // primary image — for multiple files call sequentially
+      fileIds[0], // primary image — for multiple files call sequentially
     );
 
     if (!result.linked) {
@@ -720,11 +757,13 @@ export class ClientProfileService {
     if (fileIds.length > 1) {
       await ClientProfileModel.findOneAndUpdate(
         { _id: new Types.ObjectId(profileId), isDeleted: false },
-        { $addToSet: { "idDetails.fileImageId": { $each: fileIds.slice(1) } } }
+        { $addToSet: { "idDetails.fileImageId": { $each: fileIds.slice(1) } } },
       );
     }
 
-    return (await ClientProfileModel.findById(profileId).lean()) as ClientProfile | null;
+    return (await ClientProfileModel.findById(
+      profileId,
+    ).lean()) as ClientProfile | null;
   }
 
   /**
@@ -733,15 +772,16 @@ export class ClientProfileService {
    */
   async removeIdImage(
     profileId: string,
-    fileId: string
+    fileId: string,
   ): Promise<ClientProfile | null> {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
     if (!Types.ObjectId.isValid(fileId)) throw new Error("Invalid file ID");
 
     const updated = await ClientProfileModel.findOneAndUpdate(
       { _id: new Types.ObjectId(profileId), isDeleted: false },
       { $pull: { "idDetails.fileImageId": new Types.ObjectId(fileId) } },
-      { new: true }
+      { new: true },
     ).lean();
 
     if (!updated) throw new Error("Client profile not found");
@@ -757,10 +797,12 @@ export class ClientProfileService {
    */
   async addFavoriteService(
     profileId: string,
-    serviceId: string
+    serviceId: string,
   ): Promise<ClientProfile | null> {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
-    if (!Types.ObjectId.isValid(serviceId)) throw new Error("Invalid service ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(serviceId))
+      throw new Error("Invalid service ID");
 
     const serviceExists = await ServiceModel.countDocuments({
       _id: new Types.ObjectId(serviceId),
@@ -771,7 +813,7 @@ export class ClientProfileService {
     const updated = await ClientProfileModel.findOneAndUpdate(
       { _id: new Types.ObjectId(profileId), isDeleted: false },
       { $addToSet: { favoriteServices: new Types.ObjectId(serviceId) } },
-      { new: true }
+      { new: true },
     ).lean();
 
     if (!updated) throw new Error("Client profile not found");
@@ -780,15 +822,17 @@ export class ClientProfileService {
 
   async removeFavoriteService(
     profileId: string,
-    serviceId: string
+    serviceId: string,
   ): Promise<ClientProfile | null> {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
-    if (!Types.ObjectId.isValid(serviceId)) throw new Error("Invalid service ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(serviceId))
+      throw new Error("Invalid service ID");
 
     const updated = await ClientProfileModel.findOneAndUpdate(
       { _id: new Types.ObjectId(profileId), isDeleted: false },
       { $pull: { favoriteServices: new Types.ObjectId(serviceId) } },
-      { new: true }
+      { new: true },
     ).lean();
 
     if (!updated) throw new Error("Client profile not found");
@@ -800,7 +844,8 @@ export class ClientProfileService {
    * pricing, and cover image.
    */
   async getFavoriteServices(profileId: string) {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
 
     const profile = (await ClientProfileModel.findOne({
       _id: new Types.ObjectId(profileId),
@@ -829,9 +874,10 @@ export class ClientProfileService {
    */
   async addFavoriteProvider(
     profileId: string,
-    providerProfileId: string
+    providerProfileId: string,
   ): Promise<ClientProfile | null> {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
     if (!Types.ObjectId.isValid(providerProfileId)) {
       throw new Error("Invalid provider profile ID");
     }
@@ -844,8 +890,10 @@ export class ClientProfileService {
 
     const updated = await ClientProfileModel.findOneAndUpdate(
       { _id: new Types.ObjectId(profileId), isDeleted: false },
-      { $addToSet: { favoriteProviders: new Types.ObjectId(providerProfileId) } },
-      { new: true }
+      {
+        $addToSet: { favoriteProviders: new Types.ObjectId(providerProfileId) },
+      },
+      { new: true },
     ).lean();
 
     if (!updated) throw new Error("Client profile not found");
@@ -854,9 +902,10 @@ export class ClientProfileService {
 
   async removeFavoriteProvider(
     profileId: string,
-    providerProfileId: string
+    providerProfileId: string,
   ): Promise<ClientProfile | null> {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
     if (!Types.ObjectId.isValid(providerProfileId)) {
       throw new Error("Invalid provider profile ID");
     }
@@ -864,7 +913,7 @@ export class ClientProfileService {
     const updated = await ClientProfileModel.findOneAndUpdate(
       { _id: new Types.ObjectId(profileId), isDeleted: false },
       { $pull: { favoriteProviders: new Types.ObjectId(providerProfileId) } },
-      { new: true }
+      { new: true },
     ).lean();
 
     if (!updated) throw new Error("Client profile not found");
@@ -880,9 +929,10 @@ export class ClientProfileService {
    */
   async getFavoriteProviders(
     profileId: string,
-    from?: Coordinates
+    from?: Coordinates,
   ): Promise<WithDistance<ProviderProfile>[] | ProviderProfile[]> {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
 
     const profile = (await ClientProfileModel.findOne({
       _id: new Types.ObjectId(profileId),
@@ -904,7 +954,11 @@ export class ClientProfileService {
 
     if (from) {
       return this.locationService
-        .attachDistances(from, providers as unknown as ProviderProfile[], (p) => p.locationData?.gpsCoordinates)
+        .attachDistances(
+          from,
+          providers as unknown as ProviderProfile[],
+          (p) => p.locationData?.gpsCoordinates,
+        )
         .sort((a, b) => a.distanceKm - b.distanceKm);
     }
 
@@ -923,13 +977,14 @@ export class ClientProfileService {
       status?: BookingStatus;
       limit?: number;
       skip?: number;
-    } = {}
+    } = {},
   ): Promise<{
     bookings: any[];
     total: number;
     hasMore: boolean;
   }> {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
 
     const { status, limit = 20, skip = 0 } = options;
 
@@ -965,13 +1020,14 @@ export class ClientProfileService {
       status?: TaskStatus;
       limit?: number;
       skip?: number;
-    } = {}
+    } = {},
   ): Promise<{
     tasks: any[];
     total: number;
     hasMore: boolean;
   }> {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
 
     const { status, limit = 20, skip = 0 } = options;
 
@@ -1007,7 +1063,8 @@ export class ClientProfileService {
     activeTasks: number;
     completedTasks: number;
   }> {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
 
     const clientObjectId = new Types.ObjectId(profileId);
 
@@ -1019,7 +1076,10 @@ export class ClientProfileService {
       activeTasks,
       completedTasks,
     ] = await Promise.all([
-      BookingModel.countDocuments({ clientId: clientObjectId, isDeleted: false }),
+      BookingModel.countDocuments({
+        clientId: clientObjectId,
+        isDeleted: false,
+      }),
       BookingModel.countDocuments({
         clientId: clientObjectId,
         isDeleted: false,
@@ -1069,9 +1129,10 @@ export class ClientProfileService {
    */
   async updatePreferences(
     profileId: string,
-    preferences: Partial<NonNullable<ClientProfile["preferences"]>>
+    preferences: Partial<NonNullable<ClientProfile["preferences"]>>,
   ): Promise<ClientProfile | null> {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
 
     if (!preferences || Object.keys(preferences).length === 0) {
       throw new Error("Preferences payload cannot be empty");
@@ -1081,14 +1142,16 @@ export class ClientProfileService {
     // replacing the entire preferences sub-document. This lets the caller
     // update a single field (e.g. languagePreference) without touching the rest.
     const update: Record<string, any> = {};
-    for (const [key, value] of Object.entries(preferences as Record<string, any>)) {
+    for (const [key, value] of Object.entries(
+      preferences as Record<string, any>,
+    )) {
       update[`preferences.${key}`] = value;
     }
 
     const updated = await ClientProfileModel.findOneAndUpdate(
       { _id: new Types.ObjectId(profileId), isDeleted: false },
       { $set: update },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     ).lean();
 
     if (!updated) throw new Error("Client profile not found");
@@ -1103,9 +1166,10 @@ export class ClientProfileService {
   async verifyClient(
     profileId: string,
     verificationDetails: ClientProfile["verificationDetails"],
-    _verifiedBy: string
+    _verifiedBy: string,
   ): Promise<ClientProfile | null> {
-    if (!Types.ObjectId.isValid(profileId)) throw new Error("Invalid profile ID");
+    if (!Types.ObjectId.isValid(profileId))
+      throw new Error("Invalid profile ID");
 
     const updated = await ClientProfileModel.findOneAndUpdate(
       { _id: new Types.ObjectId(profileId), isDeleted: false },
@@ -1115,7 +1179,7 @@ export class ClientProfileService {
           verificationDetails,
         },
       },
-      { new: true }
+      { new: true },
     ).lean();
 
     if (!updated) throw new Error("Client profile not found");
@@ -1124,7 +1188,7 @@ export class ClientProfileService {
 
   async getAllClients(
     pagination: { limit: number; skip: number },
-    includeDeleted: boolean = false
+    includeDeleted: boolean = false,
   ): Promise<{ clients: ClientProfile[]; total: number; hasMore: boolean }> {
     const { limit, skip } = pagination;
 
@@ -1136,7 +1200,7 @@ export class ClientProfileService {
       ClientProfileModel.find(
         includeDeleted ? {} : { isDeleted: false },
         null,
-        includeDeleted ? { includeSoftDeleted: true } : {}
+        includeDeleted ? { includeSoftDeleted: true } : {},
       )
         .limit(limit)
         .skip(skip)
@@ -1176,7 +1240,11 @@ export class ClientProfileService {
     ] = await Promise.all([
       ClientProfileModel.countDocuments({ ...base, isDeleted: false }),
       ClientProfileModel.countDocuments({ ...base, isDeleted: true }),
-      ClientProfileModel.countDocuments({ ...base, isDeleted: false, isVerified: true }),
+      ClientProfileModel.countDocuments({
+        ...base,
+        isDeleted: false,
+        isVerified: true,
+      }),
       ClientProfileModel.countDocuments({
         ...base,
         isDeleted: false,

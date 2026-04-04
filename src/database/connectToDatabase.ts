@@ -19,7 +19,7 @@ mongoose.connection.on("error", (err: Error) => {
 mongoose.connection.on("disconnected", () => {
   process.emit(
     "uncaughtException",
-    new Error("MongoDB disconnected unexpectedly")
+    new Error("MongoDB disconnected unexpectedly"),
   );
 });
 

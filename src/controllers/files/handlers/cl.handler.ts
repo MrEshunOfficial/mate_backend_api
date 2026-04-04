@@ -5,7 +5,10 @@ import { MongoDBFileService } from "../../../service/files/mongodb.file.service"
 import { EntityImageConfig } from "../../../types/entityConfig";
 import { IFile } from "../../../types/file.types";
 import { AuthenticatedRequest } from "../../../types/user.types";
-import { handleError, validateObjectId } from "../../../utils/auth/auth.controller.utils";
+import {
+  handleError,
+  validateObjectId,
+} from "../../../utils/auth/auth.controller.utils";
 
 // ─── Format helpers ───────────────────────────────────────────────────────────
 
@@ -13,36 +16,53 @@ const ALLOWED_FORMATS = ["auto", "webp", "jpg", "png"] as const;
 type OptimizedFormat = (typeof ALLOWED_FORMATS)[number];
 
 // ─── GenericCloudinaryImageHandler ───────────────────────────────────────────
-
+//
 // Handles the Cloudinary-side of image management for any entity type.
 // All entity-specific behaviour (model lookups, field names, folder paths)
 // is provided by the EntityImageConfig — this class never imports models.
 //
+// Single vs. array field behaviour is driven by config.isArray:
+//   false (default) → profile picture, category cover, service cover
+//                      upload retires the existing file; get/delete target the one active file
+//   true            → provider gallery, client/provider id-image arrays
+//                      upload accumulates; get returns all active files;
+//                      delete targets a specific fileId via req.params.fileId
+//
 // Instantiate once per entity type in CloudinaryFileController:
 //   new GenericCloudinaryImageHandler(profilePictureConfig, cloudinary, mongo)
-//   new GenericCloudinaryImageHandler(categoryCoverConfig,  cloudinary, mongo)
+//   new GenericCloudinaryImageHandler(providerGalleryConfig, cloudinary, mongo)
 
 export class GenericCloudinaryImageHandler {
   constructor(
     private readonly config: EntityImageConfig,
     private readonly cloudinaryService: CloudinaryFileService,
-    private readonly mongoService: MongoDBFileService
+    private readonly mongoService: MongoDBFileService,
   ) {}
 
   // ─── Private Helpers ──────────────────────────────────────────────────────
 
-  private async getActiveFile(entityId: string): Promise<IFile | null> {
+  /** Returns ALL active files for this config's label on the given entity. */
+  private async getActiveFiles(entityId: string): Promise<IFile[]> {
     const files = await this.mongoService.getFilesByEntity(
       this.config.entityType,
       entityId,
-      { status: "active" }
+      { status: "active" },
     );
-    return files.find((f) => f.label === this.config.label) ?? null;
+    return files.filter((f) => f.label === this.config.label);
   }
 
-  // Resolves the Cloudinary folder path for an upload.
-  // Linked mode: entityId is known → uses getLinkedFolder or default.
-  // Orphan mode: entityId is unknown → uses getOrphanFolder or default.
+  /**
+   * Returns the single active file for non-array configs.
+   * For array configs this still works — it returns the most recently
+   * uploaded file, which is only used internally during the "retire existing"
+   * step that is skipped for array configs anyway.
+   */
+  private async getActiveFile(entityId: string): Promise<IFile | null> {
+    const files = await this.getActiveFiles(entityId);
+    return files[0] ?? null;
+  }
+
+  /** Resolves the Cloudinary folder path for an upload. */
   private resolveUploadFolder(entityId: string, uploaderId: string): string {
     if (this.config.uploadMode === "orphan") {
       return this.config.getOrphanFolder
@@ -54,20 +74,84 @@ export class GenericCloudinaryImageHandler {
       : `${this.config.folderPrefix}/${entityId}/${this.config.label}`;
   }
 
+  /**
+   * Core upload logic shared by `upload` (single) and `uploadMultiple` (batch).
+   * Uploads one file buffer to Cloudinary, persists a MongoDB record, and
+   * optionally links it to the entity.
+   *
+   * For array configs linkToEntity uses $addToSet — safe to call repeatedly.
+   */
+  private async uploadOneFile(
+    file: Express.Multer.File,
+    entityId: string,
+    userId: string,
+  ): Promise<{
+    fileRecord: IFile;
+    uploadResult: Awaited<ReturnType<CloudinaryFileService["uploadFile"]>>;
+  }> {
+    const folder = this.resolveUploadFolder(entityId, userId);
+
+    const uploadResult = await this.cloudinaryService.uploadFile(
+      file.buffer,
+      file.originalname,
+      {
+        folderName: folder,
+        isPublic: true,
+        resourceType: "image",
+        tags: [this.config.entityType, this.config.label, userId],
+        description: `${this.config.label} image`,
+        entityType: this.config.entityType,
+        entityId: this.config.uploadMode === "linked" ? entityId : undefined,
+        uploaderId: new Types.ObjectId(userId),
+        label: this.config.label,
+      },
+    );
+
+    const fileRecord = await this.mongoService.createFile({
+      uploaderId: new Types.ObjectId(userId),
+      url: uploadResult.secureUrl,
+      fileName: uploadResult.fileName,
+      fileSize: uploadResult.fileSize,
+      mimeType: file.mimetype,
+      extension: uploadResult.extension,
+      thumbnailUrl: uploadResult.thumbnailUrl,
+      storageProvider: "cloudinary",
+      metadata: {
+        publicId: uploadResult.publicId,
+        format: uploadResult.format,
+        resourceType: uploadResult.resourceType,
+        width: uploadResult.width,
+        height: uploadResult.height,
+      },
+      tags: [this.config.entityType, this.config.label, userId],
+      description: `${this.config.label} image`,
+      entityType: this.config.entityType,
+      entityId:
+        this.config.uploadMode === "linked"
+          ? new Types.ObjectId(entityId)
+          : undefined,
+      label: this.config.label,
+      status: "active",
+    });
+
+    return { fileRecord, uploadResult };
+  }
+
   // ─── Handlers ─────────────────────────────────────────────────────────────
 
   /**
-   * POST   — upload a new image for an entity.
+   * POST — upload a single image for an entity.
    *
-   * Linked mode (e.g. profile picture):
-   *   - Resolves entityId from the request immediately.
-   *   - Archives + removes any existing active file from Cloudinary.
-   *   - Uploads, persists the file record with entityId, and links it.
+   * Non-array (linked) mode — e.g. profile picture:
+   *   Archives + removes any existing Cloudinary asset, uploads new one, links it.
    *
-   * Orphan mode (e.g. category cover):
-   *   - No entityId yet — file is stored under a pending folder.
-   *   - Returns fileId for the caller to pass to the entity create/update handler.
-   *   - entityId and catCoverId are set by that handler, not here.
+   * Array (linked) mode — e.g. provider gallery, client/provider id-image:
+   *   Does NOT retire the existing files. Uploads and appends to the array field
+   *   via $addToSet in linkToEntity.
+   *
+   * Orphan mode — e.g. category cover:
+   *   No entityId yet; file is stored under a pending folder. Returns fileId
+   *   for the caller to pass to the entity create/update handler.
    */
   upload = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
@@ -104,137 +188,97 @@ export class GenericCloudinaryImageHandler {
         return;
       }
 
-      // In linked mode the entityId is known now; in orphan mode we use
-      // uploaderId as a folder key only (it is NOT stored as entityId).
       const entityId =
         this.config.uploadMode === "linked"
           ? (this.config.getEntityId(req) ?? userId)
           : userId;
 
-      // ── Linked mode: retire the existing active file ─────────────────────
-      if (this.config.uploadMode === "linked") {
+      // ── Non-array linked mode: retire the one existing active file ────────
+      // Array configs skip this block — each upload accumulates, never replaces.
+      if (this.config.uploadMode === "linked" && !this.config.isArray) {
         const existing = await this.getActiveFile(entityId);
         if (existing) {
-          // Best-effort — a Cloudinary failure must not block the new upload
           if (existing.metadata?.publicId) {
             try {
               await this.cloudinaryService.deleteFile(
                 existing.metadata.publicId as string,
-                "image"
+                "image",
               );
             } catch (err) {
               console.warn(
                 `[${this.config.label}] Could not delete old Cloudinary asset:`,
-                err
+                err,
               );
             }
           }
-          // Unlink and archive in parallel — both are non-blocking on failure
           await Promise.all([
             this.config
               .unlinkFromEntity(entityId, existing._id, userId)
               .catch((err) =>
                 console.warn(
                   `[${this.config.label}] unlinkFromEntity failed:`,
-                  err
-                )
+                  err,
+                ),
               ),
             this.mongoService.archiveFile(existing._id),
           ]);
         }
       }
 
-      // ── Upload to Cloudinary ─────────────────────────────────────────────
-      const folder = this.resolveUploadFolder(entityId, userId);
-
-      const uploadResult = await this.cloudinaryService.uploadFile(
-        file.buffer,
-        file.originalname,
-        {
-          folderName: folder,
-          isPublic: true,
-          resourceType: "image",
-          tags: [this.config.entityType, this.config.label, userId],
-          description: `${this.config.label} image`,
-          // entityType is string in UploadFileOptions — pass the enum value directly
-          entityType: this.config.entityType,
-          entityId:
-            this.config.uploadMode === "linked" ? entityId : undefined,
-          uploaderId: new Types.ObjectId(userId),
-          label: this.config.label,
-        }
-      );
-
-      // ── Persist file record to MongoDB ───────────────────────────────────
-      const fileRecord = await this.mongoService.createFile({
-        uploaderId: new Types.ObjectId(userId),
-        url: uploadResult.secureUrl,
-        fileName: uploadResult.fileName,
-        fileSize: uploadResult.fileSize,
-        mimeType: file.mimetype,
-        extension: uploadResult.extension,
-        thumbnailUrl: uploadResult.thumbnailUrl,
-        storageProvider: "cloudinary",
-        // metadata on IFile is Record<string, unknown> — mixed types are fine here
-        metadata: {
-          publicId: uploadResult.publicId,
-          format: uploadResult.format,
-          resourceType: uploadResult.resourceType,
-          width: uploadResult.width,
-          height: uploadResult.height,
-        },
-        tags: [this.config.entityType, this.config.label, userId],
-        description: `${this.config.label} image`,
-        entityType: this.config.entityType,
-        // Only set entityId when the entity is already known
-        entityId:
-          this.config.uploadMode === "linked"
-            ? new Types.ObjectId(entityId)
-            : undefined,
-        label: this.config.label,
-        status: "active",
-      });
-
-      // ── Orphan mode: return fileId for deferred linking ──────────────────
-      // ── Orphan mode: return fileId, and link immediately if entityId was provided
-if (this.config.uploadMode === "orphan") {
-  const entityId = this.config.getEntityIdFromBody?.(req);
-
-  let linked = false;
-  if (entityId && validateObjectId(entityId)) {
-    try {
-      linked = await this.config.linkFileToCreatedEntity(
-        fileRecord._id,
+      // ── Upload to Cloudinary + persist MongoDB record ─────────────────────
+      const { fileRecord, uploadResult } = await this.uploadOneFile(
+        file,
         entityId,
         userId,
-        this.mongoService
       );
-    } catch (err) {
-      console.warn(`[${this.config.label}] linkFileToCreatedEntity failed:`, err);
-    }
-  }
 
-  res.status(200).json({
-    success: true,
-    message: linked
-      ? `${this.config.label} uploaded and linked successfully`
-      : `${this.config.label} uploaded successfully. Pass the returned fileId as ${this.config.imageFieldName} when creating or updating the entity.`,
-    data: {
-      fileId: fileRecord._id,
-      url: uploadResult.secureUrl,
-      thumbnailUrl: uploadResult.thumbnailUrl,
-      width: uploadResult.width,
-      height: uploadResult.height,
-      linkedToEntity: linked,
-    },
-  });
-  return;
-}
+      // ── Orphan mode: return fileId, optionally link if entityId provided ──
+      if (this.config.uploadMode === "orphan") {
+        const bodyEntityId = this.config.getEntityIdFromBody?.(req);
+        let linked = false;
 
-      // ── Linked mode: link to the entity document ─────────────────────────
+        if (bodyEntityId && validateObjectId(bodyEntityId)) {
+          try {
+            linked = await this.config.linkFileToCreatedEntity!(
+              fileRecord._id,
+              bodyEntityId,
+              userId,
+              this.mongoService,
+            );
+          } catch (err) {
+            console.warn(
+              `[${this.config.label}] linkFileToCreatedEntity failed:`,
+              err,
+            );
+          }
+        }
+
+        res.status(200).json({
+          success: true,
+          message: linked
+            ? `${this.config.label} uploaded and linked successfully`
+            : `${this.config.label} uploaded successfully. Pass the returned fileId as ${this.config.imageFieldName} when creating or updating the entity.`,
+          data: {
+            fileId: fileRecord._id,
+            url: uploadResult.secureUrl,
+            thumbnailUrl: uploadResult.thumbnailUrl,
+            width: uploadResult.width,
+            height: uploadResult.height,
+            linkedToEntity: linked,
+          },
+        });
+        return;
+      }
+
+      // ── Linked mode: link to the entity document ──────────────────────────
+      // For array configs, linkToEntity uses $addToSet internally.
       let linked = false;
       try {
-        linked = await this.config.linkToEntity(entityId, fileRecord._id, userId);
+        linked = await this.config.linkToEntity(
+          entityId,
+          fileRecord._id,
+          userId,
+        );
       } catch (err) {
         console.warn(`[${this.config.label}] linkToEntity failed:`, err);
       }
@@ -259,8 +303,149 @@ if (this.config.uploadMode === "orphan") {
   };
 
   /**
-   * GET   — returns the active image for the authenticated user's own entity.
-   * entityId is resolved via config.getEntityId (e.g. req.userId or req.params.categoryId).
+   * POST (multi) — upload several images in a single request for array-backed fields.
+   *
+   * Only valid when config.isArray is true (provider gallery, id-image arrays).
+   * Uses req.files[] populated by multer.array().
+   * Each file is uploaded independently — partial success is reported per-file.
+   * No existing files are retired.
+   */
+  uploadMultiple = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      if (!this.config.isArray) {
+        res.status(400).json({
+          success: false,
+          message: `${this.config.label} does not support multi-file upload`,
+        });
+        return;
+      }
+
+      const userId = req.userId;
+      if (!userId) {
+        res
+          .status(401)
+          .json({ success: false, message: "User not authenticated" });
+        return;
+      }
+
+      const files = req.files as Express.Multer.File[] | undefined;
+      if (!files || files.length === 0) {
+        res.status(400).json({ success: false, message: "No files uploaded" });
+        return;
+      }
+
+      const maxFiles = this.config.maxFiles ?? 10;
+      if (files.length > maxFiles) {
+        res.status(400).json({
+          success: false,
+          message: `You can upload at most ${maxFiles} files at once`,
+        });
+        return;
+      }
+
+      // Validate every file before touching Cloudinary
+      for (const file of files) {
+        if (!file.mimetype.startsWith("image/")) {
+          res.status(400).json({
+            success: false,
+            message: `All files must be images. "${file.originalname}" is not an image.`,
+          });
+          return;
+        }
+        if (file.size > this.config.maxSizeBytes) {
+          res.status(400).json({
+            success: false,
+            message: `"${file.originalname}" exceeds the ${
+              this.config.maxSizeBytes / (1024 * 1024)
+            } MB limit`,
+          });
+          return;
+        }
+      }
+
+      const entityId = this.config.getEntityId(req) ?? userId;
+
+      // Upload all files concurrently — Cloudinary handles parallel requests fine
+      const results = await Promise.allSettled(
+        files.map((file) => this.uploadOneFile(file, entityId, userId)),
+      );
+
+      // Link every successfully uploaded file to the entity
+      const uploaded: Array<{
+        fileId: Types.ObjectId;
+        url: string;
+        thumbnailUrl?: string;
+        width?: number;
+        height?: number;
+        linkedToEntity: boolean;
+        fileName: string;
+      }> = [];
+      const failed: Array<{ fileName: string; error: string }> = [];
+
+      for (let i = 0; i < results.length; i++) {
+        const result = results[i];
+        const originalName = files[i].originalname;
+
+        if (result.status === "rejected") {
+          failed.push({
+            fileName: originalName,
+            error:
+              result.reason instanceof Error
+                ? result.reason.message
+                : "Upload failed",
+          });
+          continue;
+        }
+
+        const { fileRecord, uploadResult } = result.value;
+        let linked = false;
+        try {
+          linked = await this.config.linkToEntity(
+            entityId,
+            fileRecord._id,
+            userId,
+          );
+        } catch (err) {
+          console.warn(
+            `[${this.config.label}] linkToEntity failed for ${originalName}:`,
+            err,
+          );
+        }
+
+        uploaded.push({
+          fileId: fileRecord._id,
+          url: uploadResult.secureUrl,
+          thumbnailUrl: uploadResult.thumbnailUrl,
+          width: uploadResult.width,
+          height: uploadResult.height,
+          linkedToEntity: linked,
+          fileName: originalName,
+        });
+      }
+
+      const allSucceeded = failed.length === 0;
+      const anySucceeded = uploaded.length > 0;
+
+      res.status(anySucceeded ? 200 : 500).json({
+        success: anySucceeded,
+        message: allSucceeded
+          ? `${uploaded.length} ${this.config.label}(s) uploaded successfully`
+          : `${uploaded.length} uploaded, ${failed.length} failed`,
+        data: { uploaded, failed },
+      });
+    } catch (error) {
+      handleError(res, error, `Failed to upload ${this.config.label}(s)`);
+    }
+  };
+
+  /**
+   * GET — returns the active image(s) for the authenticated user's own entity.
+   *
+   * Non-array: returns a single { fileId, url, ... } object.
+   * Array:     returns { files: [ ... ] } with all active entries.
    */
   get = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
@@ -269,6 +454,24 @@ if (this.config.uploadMode === "orphan") {
         res
           .status(400)
           .json({ success: false, message: "Invalid or missing entity ID" });
+        return;
+      }
+
+      if (this.config.isArray) {
+        const files = await this.getActiveFiles(entityId);
+        res.status(200).json({
+          success: true,
+          data: {
+            files: files.map((f) => ({
+              fileId: f._id,
+              url: f.url,
+              thumbnailUrl: f.thumbnailUrl,
+              uploadedAt: f.uploadedAt,
+              metadata: f.metadata,
+            })),
+            count: files.length,
+          },
+        });
         return;
       }
 
@@ -296,13 +499,15 @@ if (this.config.uploadMode === "orphan") {
   };
 
   /**
-   * GET /:entityId  — returns another entity's active image (public-safe fields only).
+   * GET /:entityId — returns another entity's active image(s) (public-safe fields only).
    * Only available when config.getPublicEntityId is defined.
-   * Returns 404 for entity types that do not support this access pattern.
+   *
+   * Non-array: returns a single object.
+   * Array:     returns { files: [ ... ] }.
    */
   getPublic = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       if (!this.config.getPublicEntityId) {
@@ -319,6 +524,23 @@ if (this.config.uploadMode === "orphan") {
         return;
       }
 
+      if (this.config.isArray) {
+        const files = await this.getActiveFiles(entityId);
+        res.status(200).json({
+          success: true,
+          data: {
+            files: files.map((f) => ({
+              fileId: f._id,
+              url: f.url,
+              thumbnailUrl: f.thumbnailUrl,
+              uploadedAt: f.uploadedAt,
+            })),
+            count: files.length,
+          },
+        });
+        return;
+      }
+
       const file = await this.getActiveFile(entityId);
       if (!file) {
         res
@@ -327,7 +549,6 @@ if (this.config.uploadMode === "orphan") {
         return;
       }
 
-      // Public response — metadata and internal fields intentionally excluded
       res.status(200).json({
         success: true,
         data: {
@@ -343,8 +564,12 @@ if (this.config.uploadMode === "orphan") {
   };
 
   /**
-   * DELETE   — full delete: removes Cloudinary asset, unlinks from entity document,
+   * DELETE — full delete: removes Cloudinary asset, unlinks from entity document,
    * and hard-deletes the MongoDB record.
+   *
+   * Non-array: targets the one active file.
+   * Array:     requires req.params.fileId — targets a specific file in the array.
+   *            Returns 400 if fileId is missing or doesn't belong to this entity.
    */
   delete = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
@@ -364,18 +589,53 @@ if (this.config.uploadMode === "orphan") {
         return;
       }
 
-      const file = await this.getActiveFile(entityId);
-      if (!file) {
-        res
-          .status(404)
-          .json({ success: false, message: `${this.config.label} not found` });
-        return;
+      let file: IFile | null;
+
+      if (this.config.isArray) {
+        // Array mode — caller must specify which file to delete
+        const { fileId } = req.params as { fileId?: string };
+        if (!fileId || !validateObjectId(fileId)) {
+          res.status(400).json({
+            success: false,
+            message:
+              "fileId param is required when deleting from an array field",
+          });
+          return;
+        }
+
+        file = await this.mongoService.getFileById(fileId);
+        if (!file) {
+          res.status(404).json({ success: false, message: "File not found" });
+          return;
+        }
+
+        // Verify the file actually belongs to this entity and has the right label
+        if (
+          file.entityId?.toString() !==
+            new Types.ObjectId(entityId).toString() ||
+          file.label !== this.config.label
+        ) {
+          res.status(403).json({
+            success: false,
+            message: "This file does not belong to the specified entity",
+          });
+          return;
+        }
+      } else {
+        file = await this.getActiveFile(entityId);
+        if (!file) {
+          res.status(404).json({
+            success: false,
+            message: `${this.config.label} not found`,
+          });
+          return;
+        }
       }
 
       if (file.metadata?.publicId) {
         await this.cloudinaryService.deleteFile(
           file.metadata.publicId as string,
-          "image"
+          "image",
         );
       }
 
@@ -394,12 +654,15 @@ if (this.config.uploadMode === "orphan") {
   };
 
   /**
-   * GET /optimized  — returns a Cloudinary transformation URL.
+   * GET /optimized — returns a Cloudinary transformation URL.
    * Query params: width (int), quality (int | "auto"), format ("auto"|"webp"|"jpg"|"png")
+   *
+   * For array configs, requires req.params.fileId to identify which image to optimise.
+   * For non-array configs, targets the one active file.
    */
   getOptimized = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const entityId = this.config.getEntityId(req);
@@ -412,12 +675,40 @@ if (this.config.uploadMode === "orphan") {
 
       const { width, quality, format } = req.query;
 
-      const file = await this.getActiveFile(entityId);
-      if (!file) {
-        res
-          .status(404)
-          .json({ success: false, message: `${this.config.label} not found` });
-        return;
+      let file: IFile | null;
+
+      if (this.config.isArray) {
+        const { fileId } = req.params as { fileId?: string };
+        if (!fileId || !validateObjectId(fileId)) {
+          res.status(400).json({
+            success: false,
+            message:
+              "fileId param is required for optimized URL on an array field",
+          });
+          return;
+        }
+        file = await this.mongoService.getFileById(fileId);
+        if (
+          !file ||
+          file.entityId?.toString() !==
+            new Types.ObjectId(entityId).toString() ||
+          file.label !== this.config.label
+        ) {
+          res.status(404).json({
+            success: false,
+            message: `${this.config.label} not found`,
+          });
+          return;
+        }
+      } else {
+        file = await this.getActiveFile(entityId);
+        if (!file) {
+          res.status(404).json({
+            success: false,
+            message: `${this.config.label} not found`,
+          });
+          return;
+        }
       }
 
       if (!file.metadata?.publicId) {
@@ -436,12 +727,12 @@ if (this.config.uploadMode === "orphan") {
             quality === "auto"
               ? "auto"
               : quality
-              ? parseInt(quality as string, 10)
-              : undefined,
+                ? parseInt(quality as string, 10)
+                : undefined,
           format: ALLOWED_FORMATS.includes(format as OptimizedFormat)
             ? (format as OptimizedFormat)
             : undefined,
-        }
+        },
       );
 
       res.status(200).json({
@@ -452,7 +743,7 @@ if (this.config.uploadMode === "orphan") {
       handleError(
         res,
         error,
-        `Failed to generate optimized ${this.config.label}`
+        `Failed to generate optimized ${this.config.label}`,
       );
     }
   };

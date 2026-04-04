@@ -1,10 +1,24 @@
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { Types } from "mongoose";
-import { applySuperAdminProperties, isSuperAdminEmail } from "../../utils/auth/auth.controller.utils";
-import { getVerificationEmailTemplate, getResetPasswordEmailTemplate } from "../../utils/auth/useEmailTemplates";
+import {
+  applySuperAdminProperties,
+  isSuperAdminEmail,
+} from "../../utils/auth/auth.controller.utils";
+import {
+  getVerificationEmailTemplate,
+  getResetPasswordEmailTemplate,
+} from "../../utils/auth/useEmailTemplates";
 import { AuthProvider, SystemRole } from "../../types/base.types";
-import { IUserDocument, SignupRequestBody, LoginRequestBody, VerifyEmailRequestBody, ResendVerificationRequestBody, ResetPasswordRequestBody, UpdatePasswordRequestBody } from "../../types/user.types";
+import {
+  IUserDocument,
+  SignupRequestBody,
+  LoginRequestBody,
+  VerifyEmailRequestBody,
+  ResendVerificationRequestBody,
+  ResetPasswordRequestBody,
+  UpdatePasswordRequestBody,
+} from "../../types/user.types";
 import { User } from "../../models/auth/auth.model";
 import { sendEmail } from "../../utils/auth/sendEmail";
 
@@ -18,12 +32,17 @@ export const getUserResponse = (user: IUserDocument) => ({
   authProvider: user.authProvider,
   profileId: user.profileId ?? null,
   lastLogin: user.security?.lastLogin ?? null,
+  isDeleted: user.isDeleted,
+  deletedAt: user.deletedAt ?? null,
   createdAt: user.createdAt,
 });
 
 // ─── Internal Utilities ───────────────────────────────────────────────────────
 
-const updateSecurity = (user: IUserDocument, updates: Partial<typeof user.security>) => {
+const updateSecurity = (
+  user: IUserDocument,
+  updates: Partial<typeof user.security>,
+) => {
   if (!user.security) (user as any).security = {};
   Object.assign(user.security, updates);
 };
@@ -80,9 +99,15 @@ export class AuthService {
   async login(data: LoginRequestBody): Promise<IUserDocument> {
     const { email, password } = data;
 
-    const user = await User.findOne({ email: email.toLowerCase() }).select("+password");
+    const user = await User.findOne({ email: email.toLowerCase() }).select(
+      "+password",
+    );
 
-    if (!user || user.authProvider !== AuthProvider.CREDENTIALS || !user.password) {
+    if (
+      !user ||
+      user.authProvider !== AuthProvider.CREDENTIALS ||
+      !user.password
+    ) {
       throw new Error("INVALID_CREDENTIALS");
     }
 
@@ -137,7 +162,7 @@ export class AuthService {
   }
 
   async resendVerification(
-    data: ResendVerificationRequestBody
+    data: ResendVerificationRequestBody,
   ): Promise<{ success: boolean; sent: boolean }> {
     const { email } = data;
 
@@ -147,7 +172,8 @@ export class AuthService {
     if (!user) return { success: true, sent: false };
 
     if (user.isEmailVerified) throw new Error("EMAIL_ALREADY_VERIFIED");
-    if (user.authProvider !== AuthProvider.CREDENTIALS) throw new Error("OAUTH_NO_VERIFICATION");
+    if (user.authProvider !== AuthProvider.CREDENTIALS)
+      throw new Error("OAUTH_NO_VERIFICATION");
 
     const verificationToken = crypto.randomBytes(32).toString("hex");
     user.verificationToken = verificationToken;
@@ -170,7 +196,7 @@ export class AuthService {
   // ── Password Management ─────────────────────────────────────────────────────
 
   async forgotPassword(
-    data: ResetPasswordRequestBody
+    data: ResetPasswordRequestBody,
   ): Promise<{ success: boolean; sent: boolean }> {
     const { email } = data;
 
@@ -178,7 +204,8 @@ export class AuthService {
 
     // Silent success if user doesn't exist — prevents email enumeration
     if (!user) return { success: true, sent: false };
-    if (user.authProvider !== AuthProvider.CREDENTIALS) throw new Error("OAUTH_NO_PASSWORD");
+    if (user.authProvider !== AuthProvider.CREDENTIALS)
+      throw new Error("OAUTH_NO_PASSWORD");
 
     const resetToken = crypto.randomBytes(32).toString("hex");
     user.resetPasswordToken = resetToken;
@@ -224,7 +251,7 @@ export class AuthService {
   async changePassword(
     userId: string,
     currentPassword: string,
-    newPassword: string
+    newPassword: string,
   ): Promise<IUserDocument> {
     const user = await User.findById(userId).select("+password");
     if (!user) throw new Error("USER_NOT_FOUND");
@@ -232,7 +259,10 @@ export class AuthService {
       throw new Error("OAUTH_NO_PASSWORD_CHANGE");
     }
 
-    const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    const isCurrentPasswordValid = await bcrypt.compare(
+      currentPassword,
+      user.password,
+    );
     if (!isCurrentPasswordValid) throw new Error("INVALID_CURRENT_PASSWORD");
 
     user.password = await bcrypt.hash(newPassword, 12);
@@ -260,11 +290,9 @@ export class AuthService {
   }
 
   async restoreAccount(email: string): Promise<IUserDocument> {
-    const user = await User.findOne(
-      { email: email.toLowerCase() },
-      null,
-      { includeSoftDeleted: true }
-    );
+    const user = await User.findOne({ email: email.toLowerCase() }, null, {
+      includeSoftDeleted: true,
+    });
 
     if (!user || !user.isDeleted) throw new Error("DELETED_ACCOUNT_NOT_FOUND");
 
@@ -273,7 +301,9 @@ export class AuthService {
   }
 
   async permanentlyDeleteAccount(userId: string): Promise<IUserDocument> {
-    const user = await User.findById(userId, null, { includeSoftDeleted: true });
+    const user = await User.findById(userId, null, {
+      includeSoftDeleted: true,
+    });
     if (!user) throw new Error("USER_NOT_FOUND");
     await user.deleteOne();
     return user;
@@ -299,15 +329,36 @@ export class AuthService {
         { email: { $regex: search, $options: "i" } },
       ];
     }
-    if (status) dbQuery.status = status;
+
+    // Map human-readable status values to actual schema fields.
+    // The pre-find hook excludes soft-deleted docs by default; we bypass it
+    // via { includeSoftDeleted: true } and then apply our own isDeleted filter.
+    switch (status) {
+      case "deleted":
+        dbQuery.isDeleted = true;
+        break;
+      case "active":
+        dbQuery.isDeleted = { $ne: true };
+        dbQuery.isEmailVerified = true;
+        break;
+      case "pending":
+        dbQuery.isDeleted = { $ne: true };
+        dbQuery.isEmailVerified = false;
+        break;
+      // "all" or undefined — no filter; soft-deleted included via query option
+    }
+
     if (role) dbQuery.systemRole = role;
 
+    // Always bypass the soft-delete pre-find hook so admins see every user.
+    const queryOptions = { includeSoftDeleted: true };
+
     const [users, total] = await Promise.all([
-      User.find(dbQuery)
+      User.find(dbQuery, null, queryOptions)
         .skip(skip)
         .limit(Number(limit))
         .sort({ createdAt: -1 }),
-      User.countDocuments(dbQuery),
+      User.countDocuments(dbQuery, queryOptions),
     ]);
 
     return {
@@ -321,7 +372,10 @@ export class AuthService {
     };
   }
 
-  async updateUserRole(userId: string, systemRole: SystemRole): Promise<IUserDocument> {
+  async updateUserRole(
+    userId: string,
+    systemRole: SystemRole,
+  ): Promise<IUserDocument> {
     if (!Object.values(SystemRole).includes(systemRole)) {
       throw new Error("INVALID_ROLE");
     }
@@ -336,7 +390,10 @@ export class AuthService {
   }
 
   async getUserById(userId: string): Promise<IUserDocument> {
-    const user = await User.findById(userId);
+    // Include soft-deleted so admins can inspect deleted accounts
+    const user = await User.findById(userId, null, {
+      includeSoftDeleted: true,
+    });
     if (!user) throw new Error("USER_NOT_FOUND");
     return user;
   }
@@ -345,7 +402,6 @@ export class AuthService {
     const user = await User.findById(userId);
     if (!user) throw new Error("USER_NOT_FOUND");
 
-    // softDelete expects Types.ObjectId — convert from string here at the DB layer
     const adminObjectId = adminId ? new Types.ObjectId(adminId) : undefined;
     await user.softDelete(adminObjectId);
 
@@ -353,11 +409,22 @@ export class AuthService {
   }
 
   async restoreUser(userId: string): Promise<IUserDocument> {
-    const user = await User.findById(userId, null, { includeSoftDeleted: true });
+    const user = await User.findById(userId, null, {
+      includeSoftDeleted: true,
+    });
 
     if (!user || !user.isDeleted) throw new Error("DELETED_USER_NOT_FOUND");
 
     await user.restore();
+    return user;
+  }
+
+  async permanentlyDeleteUser(userId: string): Promise<IUserDocument> {
+    const user = await User.findById(userId, null, {
+      includeSoftDeleted: true,
+    });
+    if (!user) throw new Error("USER_NOT_FOUND");
+    await user.deleteOne();
     return user;
   }
 }

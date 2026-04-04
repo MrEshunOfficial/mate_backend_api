@@ -3,22 +3,23 @@ import { BaseEntity, SoftDeletable, ActorRole } from "./base.types";
 import { UserLocation } from "./location.types";
 
 export enum BookingStatus {
-  CONFIRMED           = "CONFIRMED",
-  IN_PROGRESS         = "IN_PROGRESS",
+  CONFIRMED = "CONFIRMED",
+  IN_PROGRESS = "IN_PROGRESS",
   AWAITING_VALIDATION = "AWAITING_VALIDATION",
-  VALIDATED           = "VALIDATED",
-  DISPUTED            = "DISPUTED",
-  COMPLETED           = "COMPLETED",   // admin override — prefer VALIDATED
-  CANCELLED           = "CANCELLED",
+  VALIDATED = "VALIDATED",
+  DISPUTED = "DISPUTED",
+  REBUTTAL_SUBMITTED = "REBUTTAL_SUBMITTED",
+  COMPLETED = "COMPLETED",
+  CANCELLED = "CANCELLED",
 }
 
 export enum PaymentStatus {
-  PENDING        = "PENDING",
-  DEPOSIT_PAID   = "DEPOSIT_PAID",
+  PENDING = "PENDING",
+  DEPOSIT_PAID = "DEPOSIT_PAID",
   PARTIALLY_PAID = "PARTIALLY_PAID",
-  PAID           = "PAID",
-  REFUNDED       = "REFUNDED",
-  FAILED         = "FAILED",
+  PAID = "PAID",
+  REFUNDED = "REFUNDED",
+  FAILED = "FAILED",
 }
 
 export interface StatusHistoryEntry {
@@ -32,7 +33,7 @@ export interface StatusHistoryEntry {
 
 // Discriminated union — rating is required when approving, disputeReason when disputing
 export type ValidateBookingRequestBody =
-  | { approved: true;  rating: number; review?: string; disputeReason?: never }
+  | { approved: true; rating: number; review?: string; disputeReason?: never }
   | { approved: false; disputeReason: string; rating?: never; review?: never };
 
 // ─── Booking Entity ───────────────────────────────────────────────────────────
@@ -70,6 +71,8 @@ export interface Booking extends BaseEntity, SoftDeletable {
   disputeReason?: string;
   customerRating?: number;
   customerReview?: string;
+  rebuttalMessage?: string; // ← new
+  rebuttalAt?: Date; // ← new
 
   // Virtuals (Mongoose computed, read-only)
   readonly isActive?: boolean;
@@ -99,31 +102,42 @@ export interface Booking extends BaseEntity, SoftDeletable {
 // ─── Instance Methods ─────────────────────────────────────────────────────────
 
 export interface BookingMethods {
-  softDelete(deletedBy?: Types.ObjectId): Promise<HydratedDocument<Booking, BookingMethods>>;
+  softDelete(
+    deletedBy?: Types.ObjectId,
+  ): Promise<HydratedDocument<Booking, BookingMethods>>;
   restore(): Promise<HydratedDocument<Booking, BookingMethods>>;
-  startService(providerId?: Types.ObjectId): Promise<HydratedDocument<Booking, BookingMethods>>;
-  complete(finalPrice?: number, providerId?: Types.ObjectId): Promise<HydratedDocument<Booking, BookingMethods>>;
+  startService(
+    providerId?: Types.ObjectId,
+  ): Promise<HydratedDocument<Booking, BookingMethods>>;
+  complete(
+    finalPrice?: number,
+    providerId?: Types.ObjectId,
+  ): Promise<HydratedDocument<Booking, BookingMethods>>;
   validateCompletion(
     approved: boolean,
     clientId: Types.ObjectId,
     rating?: number,
     review?: string,
-    disputeReason?: string
+    disputeReason?: string,
   ): Promise<HydratedDocument<Booking, BookingMethods>>;
   cancel(
     reason: string,
     cancelledBy: ActorRole,
-    actorId?: Types.ObjectId
+    actorId?: Types.ObjectId,
   ): Promise<HydratedDocument<Booking, BookingMethods>>;
   updatePaymentStatus(
     paymentStatus: PaymentStatus,
-    actorId?: Types.ObjectId
+    actorId?: Types.ObjectId,
   ): Promise<HydratedDocument<Booking, BookingMethods>>;
   reschedule(
     newDate: Date,
     newTimeSlot?: { start: string; end: string },
     actorId?: Types.ObjectId,
-    actorRole?: ActorRole
+    actorRole?: ActorRole,
+  ): Promise<HydratedDocument<Booking, BookingMethods>>;
+  submitRebuttal(
+    message: string,
+    providerId: Types.ObjectId,
   ): Promise<HydratedDocument<Booking, BookingMethods>>;
 }
 
@@ -149,12 +163,17 @@ export interface BookingValidationResponse {
   booking: Booking;
 }
 
-export interface PopulatedBooking
-  extends Omit<Booking, "clientId" | "providerId" | "serviceId" | "taskId" | "serviceRequestId"> {
+export interface PopulatedBooking extends Omit<
+  Booking,
+  "clientId" | "providerId" | "serviceId" | "taskId" | "serviceRequestId"
+> {
   clientId: { _id: Types.ObjectId; name: string; email: string };
-  providerId: { _id: Types.ObjectId; businessName?: string; profile: Types.ObjectId };
+  providerId: {
+    _id: Types.ObjectId;
+    businessName?: string;
+    profile: Types.ObjectId;
+  };
   serviceId: { _id: Types.ObjectId; title: string; slug: string };
   taskId?: { _id: Types.ObjectId; title: string; status: string };
   serviceRequestId?: { _id: Types.ObjectId; clientMessage?: string };
 }
-

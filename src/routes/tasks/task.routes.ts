@@ -8,9 +8,9 @@ import {
   getTasksByClient,
   getClientTaskSummary,
   getMatchedTasksForProvider,
-  getPendingRequestsForProvider,   // ← comes from task.controller, not SR controller
+  getPendingRequestsForProvider, // ← comes from task.controller, not SR controller
   getTasksWithProviderInterest,
-  createTask,                       // ← comes from task.controller, not node-cron
+  createTask, // ← comes from task.controller, not node-cron
   getTaskById,
   updateTask,
   deleteTask,
@@ -26,6 +26,7 @@ import {
   withdrawProviderInterest,
   requestProvider,
   providerRespondToTask,
+  getAcceptedTasksForProvider,
 } from "../../controllers/tasks/task.controller";
 import {
   authenticateToken,
@@ -96,7 +97,11 @@ router.get("/search", requireCustomerOrProvider, searchTasks);
  *
  * Paginated list of tasks belonging to a specific client.
  */
-router.get("/client/:clientProfileId", requireCustomerOrProvider, getTasksByClient);
+router.get(
+  "/client/:clientProfileId",
+  requireCustomerOrProvider,
+  getTasksByClient,
+);
 
 /**
  * GET /api/tasks/client/:clientProfileId/summary
@@ -148,6 +153,12 @@ router.get(
   "/provider/:providerProfileId/interested",
   requireProvider,
   getTasksWithProviderInterest,
+);
+
+router.get(
+  "/provider/:providerProfileId/accepted",
+  requireProvider,
+  getAcceptedTasksForProvider,
 );
 
 // ─── Core CRUD ────────────────────────────────────────────────────────────────
@@ -248,7 +259,11 @@ router.post("/:taskId/match", requireCustomerOrProvider, triggerMatching);
  * Returns the matched provider list with populated ProviderProfile documents.
  * Accessible to the owning client and admins.
  */
-router.get("/:taskId/matched-providers", requireCustomerOrProvider, getMatchedProviders);
+router.get(
+  "/:taskId/matched-providers",
+  requireCustomerOrProvider,
+  getMatchedProviders,
+);
 
 /**
  * GET /api/tasks/:taskId/interested-providers

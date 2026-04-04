@@ -1,6 +1,6 @@
 import { Types, HydratedDocument } from "mongoose";
 import { BaseEntity, SoftDeletable } from "./base.types";
-type Service = any;
+import { Service } from "./services.types";
 
 // SoftDeletable covers isDeleted / deletedAt / deletedBy — not redeclared here
 export interface Category extends BaseEntity, SoftDeletable {
@@ -38,4 +38,3 @@ export interface CategoryObject extends Category {
   subcategories?: CategoryObject[];
   services?: Service[];
 }
-

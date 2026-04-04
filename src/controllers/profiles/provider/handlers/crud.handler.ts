@@ -2,11 +2,14 @@
 import { Response } from "express";
 import { AuthenticatedRequest } from "../../../../types/user.types";
 import { getParam } from "../../../../utils/auth/auth.controller.utils";
-import { providerProfileService, sendError, sendSuccess, handleServiceError } from "./base.handler";
-
+import {
+  providerProfileService,
+  sendError,
+  sendSuccess,
+  handleServiceError,
+} from "./base.handler";
 
 export class ProviderCRUDHandler {
-
   // ─── Read ───────────────────────────────────────────────────────────────────
 
   /**
@@ -18,7 +21,7 @@ export class ProviderCRUDHandler {
    */
   getProviderProfileById = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const profileId = getParam(req.params.profileId);
@@ -26,7 +29,7 @@ export class ProviderCRUDHandler {
 
       const profile = await providerProfileService.getProviderProfileById(
         profileId,
-        populate
+        populate,
       );
 
       if (!profile) {
@@ -51,7 +54,7 @@ export class ProviderCRUDHandler {
    */
   getMyProviderProfile = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const userProfileId = (req as any).userProfileId as string | undefined;
@@ -64,7 +67,7 @@ export class ProviderCRUDHandler {
       const profile =
         await providerProfileService.getProviderProfileByProfileRef(
           userProfileId,
-          true // owner always gets the full document
+          true, // owner always gets the full document
         );
 
       if (!profile) {
@@ -88,7 +91,7 @@ export class ProviderCRUDHandler {
    */
   getProviderProfileByRef = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const userProfileId = getParam(req.params.userProfileId);
@@ -97,14 +100,14 @@ export class ProviderCRUDHandler {
       const profile =
         await providerProfileService.getProviderProfileByProfileRef(
           userProfileId,
-          populate
+          populate,
         );
 
       if (!profile) {
         sendError(
           res,
           404,
-          "Provider profile not found for the given user profile"
+          "Provider profile not found for the given user profile",
         );
         return;
       }
@@ -128,7 +131,7 @@ export class ProviderCRUDHandler {
    */
   updateProviderProfile = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const profileId = getParam(req.params.profileId);
@@ -142,7 +145,7 @@ export class ProviderCRUDHandler {
       const updated = await providerProfileService.updateProviderProfile(
         profileId,
         req.body,
-        updatedBy
+        updatedBy,
       );
 
       sendSuccess(res, "Provider profile updated successfully", {
@@ -162,7 +165,7 @@ export class ProviderCRUDHandler {
    */
   updateContactInfo = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const profileId = getParam(req.params.profileId);
@@ -171,10 +174,11 @@ export class ProviderCRUDHandler {
         sendError(res, 400, "Contact info payload cannot be empty");
         return;
       }
+      const contactData = req.body.providerContactInfo ?? req.body;
 
       const updated = await providerProfileService.updateContactInfo(
         profileId,
-        req.body
+        contactData,
       );
 
       sendSuccess(res, "Contact info updated successfully", {
@@ -192,7 +196,7 @@ export class ProviderCRUDHandler {
    */
   updateBusinessInfo = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const profileId = getParam(req.params.profileId);
@@ -206,7 +210,7 @@ export class ProviderCRUDHandler {
         sendError(
           res,
           400,
-          "Provide at least one of: businessName, idDetails, isCompanyTrained"
+          "Provide at least one of: businessName, idDetails, isCompanyTrained",
         );
         return;
       }
@@ -217,7 +221,7 @@ export class ProviderCRUDHandler {
           ...(businessName !== undefined && { businessName }),
           ...(idDetails !== undefined && { idDetails }),
           ...(isCompanyTrained !== undefined && { isCompanyTrained }),
-        }
+        },
       );
 
       sendSuccess(res, "Business info updated successfully", {
@@ -237,7 +241,7 @@ export class ProviderCRUDHandler {
    */
   updateWorkingHours = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const profileId = getParam(req.params.profileId);
@@ -250,7 +254,7 @@ export class ProviderCRUDHandler {
 
       const updated = await providerProfileService.updateWorkingHours(
         profileId,
-        workingHours
+        workingHours,
       );
 
       sendSuccess(res, "Working hours updated successfully", {
@@ -273,7 +277,7 @@ export class ProviderCRUDHandler {
    */
   setAvailability = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const profileId = getParam(req.params.profileId);
@@ -287,7 +291,7 @@ export class ProviderCRUDHandler {
       const updated = await providerProfileService.setAvailability(
         profileId,
         isAlwaysAvailable,
-        workingHours
+        workingHours,
       );
 
       sendSuccess(
@@ -295,7 +299,7 @@ export class ProviderCRUDHandler {
         isAlwaysAvailable
           ? "Provider set to always available"
           : "Working hours set as availability schedule",
-        { providerProfile: updated }
+        { providerProfile: updated },
       );
     } catch (error) {
       handleServiceError(res, error);
@@ -311,7 +315,7 @@ export class ProviderCRUDHandler {
    */
   updateDepositSettings = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const profileId = getParam(req.params.profileId);
@@ -325,7 +329,7 @@ export class ProviderCRUDHandler {
       const updated = await providerProfileService.updateDepositSettings(
         profileId,
         requireInitialDeposit,
-        percentageDeposit
+        percentageDeposit,
       );
 
       sendSuccess(res, "Deposit settings updated successfully", {
@@ -344,7 +348,7 @@ export class ProviderCRUDHandler {
    */
   getProfileLiveStatus = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const profileId = getParam(req.params.profileId);
@@ -365,7 +369,7 @@ export class ProviderCRUDHandler {
    */
   deleteProviderProfile = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const profileId = getParam(req.params.profileId);
@@ -385,7 +389,7 @@ export class ProviderCRUDHandler {
    */
   restoreProviderProfile = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const profileId = getParam(req.params.profileId);

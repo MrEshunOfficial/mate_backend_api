@@ -18,11 +18,11 @@ import { BookingStatusHandler } from "./status.handler";
  */
 export class BookingController {
   private creationHandler: BookingCreationHandler;
-  private crudHandler:     BookingCRUDHandler;
-  private statusHandler:   BookingStatusHandler;
-  private paymentHandler:  BookingPaymentHandler;
-  private queriesHandler:  BookingQueriesHandler;
-  private adminHandler:    BookingAdminHandler;
+  private crudHandler: BookingCRUDHandler;
+  private statusHandler: BookingStatusHandler;
+  private paymentHandler: BookingPaymentHandler;
+  private queriesHandler: BookingQueriesHandler;
+  private adminHandler: BookingAdminHandler;
 
   // ─── Creation ────────────────────────────────────────────────────────────────
   public createBookingFromTask;
@@ -44,6 +44,7 @@ export class BookingController {
   public validateCompletion;
   public cancelBooking;
   public rescheduleBooking;
+  public submitRebuttal; // ← new
 
   // ─── Payment ──────────────────────────────────────────────────────────────────
   public updatePaymentStatus;
@@ -64,49 +65,53 @@ export class BookingController {
 
   constructor() {
     this.creationHandler = new BookingCreationHandler();
-    this.crudHandler     = new BookingCRUDHandler();
-    this.statusHandler   = new BookingStatusHandler();
-    this.paymentHandler  = new BookingPaymentHandler();
-    this.queriesHandler  = new BookingQueriesHandler();
-    this.adminHandler    = new BookingAdminHandler();
+    this.crudHandler = new BookingCRUDHandler();
+    this.statusHandler = new BookingStatusHandler();
+    this.paymentHandler = new BookingPaymentHandler();
+    this.queriesHandler = new BookingQueriesHandler();
+    this.adminHandler = new BookingAdminHandler();
 
     // Creation
-    this.createBookingFromTask           = this.creationHandler.createBookingFromTask;
-    this.createBookingFromServiceRequest = this.creationHandler.createBookingFromServiceRequest;
+    this.createBookingFromTask = this.creationHandler.createBookingFromTask;
+    this.createBookingFromServiceRequest =
+      this.creationHandler.createBookingFromServiceRequest;
 
     // CRUD
-    this.getBookingById            = this.crudHandler.getBookingById;
-    this.getBookingByNumber        = this.crudHandler.getBookingByNumber;
-    this.getBookingByTask          = this.crudHandler.getBookingByTask;
-    this.getBookingByServiceRequest = this.crudHandler.getBookingByServiceRequest;
-    this.getBookingsByClient       = this.crudHandler.getBookingsByClient;
-    this.getBookingsByProvider     = this.crudHandler.getBookingsByProvider;
-    this.deleteBooking             = this.crudHandler.deleteBooking;
-    this.restoreBooking            = this.crudHandler.restoreBooking;
+    this.getBookingById = this.crudHandler.getBookingById;
+    this.getBookingByNumber = this.crudHandler.getBookingByNumber;
+    this.getBookingByTask = this.crudHandler.getBookingByTask;
+    this.getBookingByServiceRequest =
+      this.crudHandler.getBookingByServiceRequest;
+    this.getBookingsByClient = this.crudHandler.getBookingsByClient;
+    this.getBookingsByProvider = this.crudHandler.getBookingsByProvider;
+    this.deleteBooking = this.crudHandler.deleteBooking;
+    this.restoreBooking = this.crudHandler.restoreBooking;
 
     // Status
-    this.startService        = this.statusHandler.startService;
-    this.completeService     = this.statusHandler.completeService;
-    this.validateCompletion  = this.statusHandler.validateCompletion;
-    this.cancelBooking       = this.statusHandler.cancelBooking;
-    this.rescheduleBooking   = this.statusHandler.rescheduleBooking;
+    this.startService = this.statusHandler.startService;
+    this.completeService = this.statusHandler.completeService;
+    this.validateCompletion = this.statusHandler.validateCompletion;
+    this.cancelBooking = this.statusHandler.cancelBooking;
+    this.rescheduleBooking = this.statusHandler.rescheduleBooking;
+    this.submitRebuttal = this.statusHandler.submitRebuttal; // ← new
 
     // Payment
     this.updatePaymentStatus = this.paymentHandler.updatePaymentStatus;
-    this.getPaymentSummary   = this.paymentHandler.getPaymentSummary;
+    this.getPaymentSummary = this.paymentHandler.getPaymentSummary;
 
     // Queries
-    this.getUpcomingBookings    = this.queriesHandler.getUpcomingBookings;
+    this.getUpcomingBookings = this.queriesHandler.getUpcomingBookings;
     this.getBookingsByDateRange = this.queriesHandler.getBookingsByDateRange;
-    this.getActivitySummary     = this.queriesHandler.getActivitySummary;
+    this.getActivitySummary = this.queriesHandler.getActivitySummary;
 
     // Admin
-    this.resolveDispute               = this.adminHandler.resolveDispute;
-    this.getActiveBookings            = this.adminHandler.getActiveBookings;
-    this.getBookingsPendingValidation = this.adminHandler.getBookingsPendingValidation;
-    this.getDisputedBookings          = this.adminHandler.getDisputedBookings;
-    this.getAllBookings                = this.adminHandler.getAllBookings;
-    this.getBookingStats              = this.adminHandler.getBookingStats;
+    this.resolveDispute = this.adminHandler.resolveDispute;
+    this.getActiveBookings = this.adminHandler.getActiveBookings;
+    this.getBookingsPendingValidation =
+      this.adminHandler.getBookingsPendingValidation;
+    this.getDisputedBookings = this.adminHandler.getDisputedBookings;
+    this.getAllBookings = this.adminHandler.getAllBookings;
+    this.getBookingStats = this.adminHandler.getBookingStats;
   }
 }
 
@@ -137,6 +142,7 @@ export const {
   validateCompletion,
   cancelBooking,
   rescheduleBooking,
+  submitRebuttal, // ← new
 
   // Payment
   updatePaymentStatus,

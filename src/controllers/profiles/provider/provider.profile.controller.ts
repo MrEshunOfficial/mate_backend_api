@@ -4,6 +4,7 @@ import { ProviderLocationHandler } from "./handlers/location.handler";
 import { ProviderRetrievalHandler } from "./handlers/retrieval.handler";
 import { ProviderSearchHandler } from "./handlers/search.handler";
 import { ProviderAdminHandler } from "./handlers/admin.handler";
+import { ProviderBrowseHandler } from "./handlers/browse.handler";
 
 /**
  * Provider Profile Controller
@@ -14,6 +15,7 @@ import { ProviderAdminHandler } from "./handlers/admin.handler";
  *   ProviderRetrievalHandler  — gallery images, ID images, service offering management
  *   ProviderSearchHandler     — discovery: text search, location filter, proximity
  *   ProviderAdminHandler      — admin-only: list all, stats, verify address, company training
+ *   ProviderBrowseHandler     — public discovery: unified filter + sort surface
  */
 export class ProviderProfileController {
   private crudHandler: ProviderCRUDHandler;
@@ -21,6 +23,7 @@ export class ProviderProfileController {
   private retrievalHandler: ProviderRetrievalHandler;
   private searchHandler: ProviderSearchHandler;
   private adminHandler: ProviderAdminHandler;
+  private browseHandler: ProviderBrowseHandler;
 
   // ─── CRUD ───────────────────────────────────────────────────────────────────
   public getProviderProfileById;
@@ -57,6 +60,9 @@ export class ProviderProfileController {
   public getProvidersNearCoordinates;
   public getProvidersByService;
 
+  // ─── Browse ──────────────────────────────────────────────────────────────────
+  public browseProviders;
+
   // ─── Admin ───────────────────────────────────────────────────────────────────
   public getAllProviders;
   public verifyProviderAddress;
@@ -68,56 +74,63 @@ export class ProviderProfileController {
   public adminRemoveServiceOffering;
 
   constructor() {
-    this.crudHandler       = new ProviderCRUDHandler();
-    this.locationHandler   = new ProviderLocationHandler();
-    this.retrievalHandler  = new ProviderRetrievalHandler();
-    this.searchHandler     = new ProviderSearchHandler();
-    this.adminHandler      = new ProviderAdminHandler();
+    this.crudHandler = new ProviderCRUDHandler();
+    this.locationHandler = new ProviderLocationHandler();
+    this.retrievalHandler = new ProviderRetrievalHandler();
+    this.searchHandler = new ProviderSearchHandler();
+    this.adminHandler = new ProviderAdminHandler();
+    this.browseHandler = new ProviderBrowseHandler();
 
     // CRUD
-    this.getProviderProfileById   = this.crudHandler.getProviderProfileById;
-    this.getMyProviderProfile     = this.crudHandler.getMyProviderProfile;
-    this.getProviderProfileByRef  = this.crudHandler.getProviderProfileByRef;
-    this.updateProviderProfile    = this.crudHandler.updateProviderProfile;
-    this.updateContactInfo        = this.crudHandler.updateContactInfo;
-    this.updateBusinessInfo       = this.crudHandler.updateBusinessInfo;
-    this.updateWorkingHours       = this.crudHandler.updateWorkingHours;
-    this.setAvailability          = this.crudHandler.setAvailability;
-    this.updateDepositSettings    = this.crudHandler.updateDepositSettings;
-    this.getProfileLiveStatus     = this.crudHandler.getProfileLiveStatus;
-    this.deleteProviderProfile    = this.crudHandler.deleteProviderProfile;
-    this.restoreProviderProfile   = this.crudHandler.restoreProviderProfile;
+    this.getProviderProfileById = this.crudHandler.getProviderProfileById;
+    this.getMyProviderProfile = this.crudHandler.getMyProviderProfile;
+    this.getProviderProfileByRef = this.crudHandler.getProviderProfileByRef;
+    this.updateProviderProfile = this.crudHandler.updateProviderProfile;
+    this.updateContactInfo = this.crudHandler.updateContactInfo;
+    this.updateBusinessInfo = this.crudHandler.updateBusinessInfo;
+    this.updateWorkingHours = this.crudHandler.updateWorkingHours;
+    this.setAvailability = this.crudHandler.setAvailability;
+    this.updateDepositSettings = this.crudHandler.updateDepositSettings;
+    this.getProfileLiveStatus = this.crudHandler.getProfileLiveStatus;
+    this.deleteProviderProfile = this.crudHandler.deleteProviderProfile;
+    this.restoreProviderProfile = this.crudHandler.restoreProviderProfile;
 
     // Location
-    this.updateLocationData        = this.locationHandler.updateLocationData;
-    this.checkLocationVerification = this.locationHandler.checkLocationVerification;
+    this.updateLocationData = this.locationHandler.updateLocationData;
+    this.checkLocationVerification =
+      this.locationHandler.checkLocationVerification;
 
     // Retrieval
-    this.getServiceOfferings   = this.retrievalHandler.getServiceOfferings;
-    this.addServiceOffering    = this.retrievalHandler.addServiceOffering;
+    this.getServiceOfferings = this.retrievalHandler.getServiceOfferings;
+    this.addServiceOffering = this.retrievalHandler.addServiceOffering;
     this.removeServiceOffering = this.retrievalHandler.removeServiceOffering;
-    this.addGalleryImages      = this.retrievalHandler.addGalleryImages;
-    this.removeGalleryImage    = this.retrievalHandler.removeGalleryImage;
-    this.reorderGalleryImages  = this.retrievalHandler.reorderGalleryImages;
-    this.updateIdImages        = this.retrievalHandler.updateIdImages;
-    this.removeIdImage         = this.retrievalHandler.removeIdImage;
-    this.replaceIdImages       = this.retrievalHandler.replaceIdImages;
+    this.addGalleryImages = this.retrievalHandler.addGalleryImages;
+    this.removeGalleryImage = this.retrievalHandler.removeGalleryImage;
+    this.reorderGalleryImages = this.retrievalHandler.reorderGalleryImages;
+    this.updateIdImages = this.retrievalHandler.updateIdImages;
+    this.removeIdImage = this.retrievalHandler.removeIdImage;
+    this.replaceIdImages = this.retrievalHandler.replaceIdImages;
 
     // Search
-    this.searchProviders             = this.searchHandler.searchProviders;
-    this.getProvidersByLocation      = this.searchHandler.getProvidersByLocation;
-    this.getProvidersNearCoordinates = this.searchHandler.getProvidersNearCoordinates;
-    this.getProvidersByService       = this.searchHandler.getProvidersByService;
+    this.searchProviders = this.searchHandler.searchProviders;
+    this.getProvidersByLocation = this.searchHandler.getProvidersByLocation;
+    this.getProvidersNearCoordinates =
+      this.searchHandler.getProvidersNearCoordinates;
+    this.getProvidersByService = this.searchHandler.getProvidersByService;
+
+    // Browse
+    this.browseProviders = this.browseHandler.browseProviders;
 
     // Admin
-    this.getAllProviders             = this.adminHandler.getAllProviders;
-    this.verifyProviderAddress      = this.adminHandler.verifyProviderAddress;
-    this.setCompanyTrained          = this.adminHandler.setCompanyTrained;
-    this.getProviderStats           = this.adminHandler.getProviderStats;
-    this.adminDeleteProvider        = this.adminHandler.adminDeleteProvider;
-    this.adminRestoreProvider       = this.adminHandler.adminRestoreProvider;
-    this.adminAddServiceOffering    = this.adminHandler.adminAddServiceOffering;
-    this.adminRemoveServiceOffering = this.adminHandler.adminRemoveServiceOffering;
+    this.getAllProviders = this.adminHandler.getAllProviders;
+    this.verifyProviderAddress = this.adminHandler.verifyProviderAddress;
+    this.setCompanyTrained = this.adminHandler.setCompanyTrained;
+    this.getProviderStats = this.adminHandler.getProviderStats;
+    this.adminDeleteProvider = this.adminHandler.adminDeleteProvider;
+    this.adminRestoreProvider = this.adminHandler.adminRestoreProvider;
+    this.adminAddServiceOffering = this.adminHandler.adminAddServiceOffering;
+    this.adminRemoveServiceOffering =
+      this.adminHandler.adminRemoveServiceOffering;
   }
 }
 
@@ -162,6 +175,9 @@ export const {
   getProvidersByLocation,
   getProvidersNearCoordinates,
   getProvidersByService,
+
+  // Browse
+  browseProviders,
 
   // Admin
   getAllProviders,

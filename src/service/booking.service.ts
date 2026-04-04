@@ -6,12 +6,17 @@ import ProviderProfileModel from "../models/profiles/provider.profile.model";
 import { ServiceModel } from "../models/service/serviceModel";
 import TaskModel from "../models/task.model";
 import { ActorRole } from "../types/base.types";
-import { Booking, BookingMethods, BookingStatus, PaymentStatus, ValidateBookingRequestBody } from "../types/bookings.types";
+import {
+  Booking,
+  BookingMethods,
+  BookingStatus,
+  PaymentStatus,
+  ValidateBookingRequestBody,
+} from "../types/bookings.types";
 import { UserLocation } from "../types/location.types";
 import { ServiceRequestStatus } from "../types/service-request.types";
 import { TaskStatus } from "../types/tasks.types";
 import ServiceRequestModel from "../models/service/service-request.model";
-
 
 type BookingDocument = HydratedDocument<Booking, BookingMethods>;
 
@@ -25,8 +30,16 @@ type BookingDocument = HydratedDocument<Booking, BookingMethods>;
  * matched offerings before a booking can be created.
  */
 export interface CreateBookingFromTaskInput {
-  /** Which specific service is being booked (must belong to the accepted provider) */
-  serviceId: string;
+  /**
+   * Which specific service is being booked.
+   *
+   * OPTIONAL for the task flow — when omitted the service is resolved
+   * automatically from task.matchedProviders[acceptedProvider].matchedServices[0].
+   *
+   * A client may supply this explicitly if the provider offers multiple
+   * services and the task matched more than one.
+   */
+  serviceId?: string;
   /** Where the service will be delivered */
   serviceLocation: UserLocation;
   scheduledDate: Date;
@@ -34,11 +47,6 @@ export interface CreateBookingFromTaskInput {
   /** Summary of work to be done — shown to the provider */
   serviceDescription: string;
   specialInstructions?: string;
-  /**
-   * Agreed price for this booking.
-   * If omitted, the service's basePrice is used as a fallback.
-   * Final price is set by the provider at completion via completeService().
-   */
   estimatedPrice?: number;
   /** ISO 4217 currency code — defaults to GHS */
   currency?: string;
@@ -93,7 +101,6 @@ const DEFAULT_CURRENCY = "GHS";
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export class BookingService {
-
   // ─── Creation: Flow 1 — From Task ────────────────────────────────────────────
 
   /**
@@ -122,113 +129,150 @@ export class BookingService {
     taskId: string,
     data: CreateBookingFromTaskInput,
   ): Promise<{ booking: Booking; taskUpdated: boolean }> {
-    if (!Types.ObjectId.isValid(taskId))        throw new Error("Invalid task ID");
-    if (!Types.ObjectId.isValid(data.serviceId)) throw new Error("Invalid service ID");
+    if (!Types.ObjectId.isValid(taskId)) throw new Error("Invalid task ID");
+    if (data.serviceId && !Types.ObjectId.isValid(data.serviceId)) {
+      throw new Error("Invalid service ID");
+    }
 
-    // ── 1. Load and verify the task ──────────────────────────────────────────
+    // ── 1. Load and verify the task ────────────────────────────────────────────
     const task = await TaskModel.findOne({
-      _id:       new Types.ObjectId(taskId),
-      status:    TaskStatus.ACCEPTED,
+      _id: new Types.ObjectId(taskId),
+      status: TaskStatus.ACCEPTED,
       isDeleted: false,
     }).lean();
 
     if (!task) {
       throw new Error(
         "Task not found or not in ACCEPTED status. " +
-        "Only accepted tasks can be converted to bookings.",
+          "Only accepted tasks can be converted to bookings.",
       );
     }
 
     const acceptedProviderId = task.acceptedProvider?.providerId;
     if (!acceptedProviderId) {
-      throw new Error("Task has no accepted provider — this is an inconsistent state");
+      throw new Error(
+        "Task has no accepted provider — this is an inconsistent state",
+      );
     }
 
-    // ── 2 & 3. Verify provider, service ownership, and client in parallel ────
+    // ── 2. Resolve serviceId ───────────────────────────────────────────────────
+    //
+    // If the caller supplied a serviceId, use it directly.
+    // Otherwise derive it from the accepted provider's matchedServices array —
+    // this is the set of services the matching algorithm found relevant to the
+    // task. We take the first one (highest-scoring match).
+    //
+    // If neither source yields a valid ID we fail fast with a clear message
+    // rather than letting the service ownership check produce a confusing error.
+    let resolvedServiceId: string;
+
+    if (data.serviceId) {
+      resolvedServiceId = data.serviceId;
+    } else {
+      const acceptedProviderMatch = task.matchedProviders?.find(
+        (mp) => mp.providerId.toString() === acceptedProviderId.toString(),
+      );
+
+      const derivedServiceId = acceptedProviderMatch?.matchedServices?.[0];
+
+      if (
+        !derivedServiceId ||
+        !Types.ObjectId.isValid(String(derivedServiceId))
+      ) {
+        throw new Error(
+          "Could not determine a service for this booking. " +
+            "The accepted provider has no matched services on this task. " +
+            "Please provide a serviceId explicitly.",
+        );
+      }
+
+      resolvedServiceId = String(derivedServiceId);
+    }
+
+    // ── 3. Verify provider, service ownership, and client in parallel ──────────
     const [provider, service, clientExists] = await Promise.all([
       ProviderProfileModel.findOne({
-        _id:       acceptedProviderId,
+        _id: acceptedProviderId,
         isDeleted: false,
       }).lean(),
       ServiceModel.findOne({
-        _id:       new Types.ObjectId(data.serviceId),
-        isActive:  true,
+        _id: new Types.ObjectId(resolvedServiceId),
+        isActive: true,
         isDeleted: false,
       }).lean(),
       ClientProfileModel.countDocuments({
-        _id:       task.clientId,
+        _id: task.clientId,
         isDeleted: false,
       }),
     ]);
 
-    if (!provider)       throw new Error("Accepted provider profile not found");
-    if (!service)        throw new Error("Service not found or inactive");
-    if (!clientExists)   throw new Error("Client profile not found");
+    if (!provider) throw new Error("Accepted provider profile not found");
+    if (!service) throw new Error("Service not found or inactive");
+    if (!clientExists) throw new Error("Client profile not found");
 
     // Service must belong to the accepted provider
     if (service.providerId?.toString() !== acceptedProviderId.toString()) {
-      throw new Error("The selected service does not belong to the accepted provider");
+      throw new Error(
+        "The selected service does not belong to the accepted provider",
+      );
     }
 
-    // ── 4. Resolve pricing and deposit ──────────────────────────────────────
+    // ── 4. Resolve pricing and deposit ────────────────────────────────────────
     const estimatedPrice =
-      data.estimatedPrice ??
-      service.servicePricing?.basePrice ??
-      undefined;
+      data.estimatedPrice ?? service.servicePricing?.basePrice ?? undefined;
 
-    const { depositAmount } = this.resolveDepositSettings(provider, estimatedPrice);
+    const { depositAmount } = this.resolveDepositSettings(
+      provider,
+      estimatedPrice,
+    );
 
-    // ── 5 & 6. Generate booking number and persist ───────────────────────────
+    // ── 5 & 6. Generate booking number and persist ────────────────────────────
     const bookingNumber = await BookingModel.generateBookingNumber();
 
     const booking = await BookingModel.create({
       bookingNumber,
-      taskId:      new Types.ObjectId(taskId),
-      clientId:    task.clientId,
-      providerId:  acceptedProviderId,
-      serviceId:   new Types.ObjectId(data.serviceId),
-      serviceLocation:   data.serviceLocation,
-      scheduledDate:     data.scheduledDate,
+      taskId: new Types.ObjectId(taskId),
+      clientId: task.clientId,
+      providerId: acceptedProviderId,
+      serviceId: new Types.ObjectId(resolvedServiceId),
+      serviceLocation: data.serviceLocation,
+      scheduledDate: data.scheduledDate,
       scheduledTimeSlot: data.scheduledTimeSlot,
       serviceDescription: data.serviceDescription.trim(),
       specialInstructions: data.specialInstructions?.trim(),
       estimatedPrice,
       depositAmount,
       depositPaid: false,
-      currency:    (data.currency ?? DEFAULT_CURRENCY).toUpperCase(),
-      status:      BookingStatus.CONFIRMED,
-      paymentStatus: depositAmount ? PaymentStatus.PENDING : PaymentStatus.PENDING,
+      currency: (data.currency ?? DEFAULT_CURRENCY).toUpperCase(),
+      status: BookingStatus.CONFIRMED,
+      paymentStatus: PaymentStatus.PENDING,
       statusHistory: [
         {
-          status:    BookingStatus.CONFIRMED,
+          status: BookingStatus.CONFIRMED,
           timestamp: new Date(),
           actorRole: ActorRole.SYSTEM,
-          message:   "Booking created from accepted task",
+          message: "Booking created from accepted task",
         },
       ],
     });
 
-    // ── 7. Stamp the task as CONVERTED ───────────────────────────────────────
-    //
-    // Uses findOneAndUpdate rather than task.save() to avoid loading the full
-    // task document. The status guard ($in) provides a safety net against
-    // double-conversion in the unlikely event of a concurrent request.
+    // ── 7. Stamp the task as CONVERTED ────────────────────────────────────────
     const taskUpdateResult = await TaskModel.findOneAndUpdate(
       {
-        _id:       new Types.ObjectId(taskId),
-        status:    TaskStatus.ACCEPTED,
+        _id: new Types.ObjectId(taskId),
+        status: TaskStatus.ACCEPTED,
         isDeleted: false,
       },
       {
-        status:               TaskStatus.CONVERTED,
+        status: TaskStatus.CONVERTED,
         convertedToBookingId: booking._id,
-        convertedAt:          new Date(),
+        convertedAt: new Date(),
       },
     );
 
     return {
-      booking:      booking.toObject() as Booking,
-      taskUpdated:  !!taskUpdateResult,
+      booking: booking.toObject() as Booking,
+      taskUpdated: !!taskUpdateResult,
     };
   }
 
@@ -268,16 +312,16 @@ export class BookingService {
 
     // ── 1. Load and verify the service request ───────────────────────────────
     const serviceRequest = await ServiceRequestModel.findOne({
-      _id:        new Types.ObjectId(serviceRequestId),
+      _id: new Types.ObjectId(serviceRequestId),
       providerId: new Types.ObjectId(providerProfileId),
-      status:     ServiceRequestStatus.PENDING,
-      isDeleted:  false,
+      status: ServiceRequestStatus.PENDING,
+      isDeleted: false,
     }).lean();
 
     if (!serviceRequest) {
       throw new Error(
         "Service request not found, not in PENDING status, " +
-        "or does not belong to this provider.",
+          "or does not belong to this provider.",
       );
     }
 
@@ -291,22 +335,22 @@ export class BookingService {
     // ── 2. Verify provider, service, and client in parallel ─────────────────
     const [provider, service, clientExists] = await Promise.all([
       ProviderProfileModel.findOne({
-        _id:       new Types.ObjectId(providerProfileId),
+        _id: new Types.ObjectId(providerProfileId),
         isDeleted: false,
       }).lean(),
       ServiceModel.findOne({
-        _id:       serviceRequest.serviceId,
-        isActive:  true,
+        _id: serviceRequest.serviceId,
+        isActive: true,
         isDeleted: false,
       }).lean(),
       ClientProfileModel.countDocuments({
-        _id:       serviceRequest.clientId,
+        _id: serviceRequest.clientId,
         isDeleted: false,
       }),
     ]);
 
-    if (!provider)     throw new Error("Provider profile not found");
-    if (!service)      throw new Error("Service not found or inactive");
+    if (!provider) throw new Error("Provider profile not found");
+    if (!service) throw new Error("Service not found or inactive");
     if (!clientExists) throw new Error("Client profile not found");
 
     // ── 3. Resolve pricing and deposit ──────────────────────────────────────
@@ -317,7 +361,10 @@ export class BookingService {
       service.servicePricing?.basePrice ??
       undefined;
 
-    const { depositAmount } = this.resolveDepositSettings(provider, estimatedPrice);
+    const { depositAmount } = this.resolveDepositSettings(
+      provider,
+      estimatedPrice,
+    );
 
     // ── 4 & 5. Generate booking number and persist ───────────────────────────
     const bookingNumber = await BookingModel.generateBookingNumber();
@@ -330,27 +377,30 @@ export class BookingService {
     const booking = await BookingModel.create({
       bookingNumber,
       serviceRequestId: new Types.ObjectId(serviceRequestId),
-      clientId:    serviceRequest.clientId,
-      providerId:  new Types.ObjectId(providerProfileId),
-      serviceId:   serviceRequest.serviceId,
-      serviceLocation:   serviceRequest.serviceLocation,
-      scheduledDate:     data.scheduledDate ?? serviceRequest.scheduledDate,
-      scheduledTimeSlot: data.scheduledTimeSlot ?? serviceRequest.scheduledTimeSlot,
+      clientId: serviceRequest.clientId,
+      providerId: new Types.ObjectId(providerProfileId),
+      serviceId: serviceRequest.serviceId,
+      serviceLocation: serviceRequest.serviceLocation,
+      scheduledDate: data.scheduledDate ?? serviceRequest.scheduledDate,
+      scheduledTimeSlot:
+        data.scheduledTimeSlot ?? serviceRequest.scheduledTimeSlot,
       serviceDescription,
       specialInstructions: data.specialInstructions?.trim(),
       estimatedPrice,
       depositAmount,
       depositPaid: false,
-      currency:    (serviceRequest.estimatedBudget?.currency ?? DEFAULT_CURRENCY).toUpperCase(),
-      status:      BookingStatus.CONFIRMED,
+      currency: (
+        serviceRequest.estimatedBudget?.currency ?? DEFAULT_CURRENCY
+      ).toUpperCase(),
+      status: BookingStatus.CONFIRMED,
       paymentStatus: PaymentStatus.PENDING,
       statusHistory: [
         {
-          status:    BookingStatus.CONFIRMED,
+          status: BookingStatus.CONFIRMED,
           timestamp: new Date(),
           actorRole: ActorRole.PROVIDER,
-          actor:     new Types.ObjectId(providerProfileId),
-          message:   "Booking created from accepted service request",
+          actor: new Types.ObjectId(providerProfileId),
+          message: "Booking created from accepted service request",
         },
       ],
     });
@@ -358,13 +408,13 @@ export class BookingService {
     // ── 6. Transition ServiceRequest to ACCEPTED and stamp booking ref ───────
     const srUpdateResult = await ServiceRequestModel.findOneAndUpdate(
       {
-        _id:    new Types.ObjectId(serviceRequestId),
+        _id: new Types.ObjectId(serviceRequestId),
         status: ServiceRequestStatus.PENDING,
       },
       {
-        status:               ServiceRequestStatus.ACCEPTED,
+        status: ServiceRequestStatus.ACCEPTED,
         convertedToBookingId: booking._id,
-        convertedAt:          new Date(),
+        convertedAt: new Date(),
         providerResponse: {
           respondedAt: new Date(),
         },
@@ -372,8 +422,8 @@ export class BookingService {
     );
 
     return {
-      booking:                booking.toObject() as Booking,
-      serviceRequestUpdated:  !!srUpdateResult,
+      booking: booking.toObject() as Booking,
+      serviceRequestUpdated: !!srUpdateResult,
     };
   }
 
@@ -392,20 +442,24 @@ export class BookingService {
     bookingId: string,
     populate: boolean = false,
   ): Promise<Booking | null> {
-    if (!Types.ObjectId.isValid(bookingId)) throw new Error("Invalid booking ID");
+    if (!Types.ObjectId.isValid(bookingId))
+      throw new Error("Invalid booking ID");
 
     const query = BookingModel.findOne({
-      _id:       new Types.ObjectId(bookingId),
+      _id: new Types.ObjectId(bookingId),
       isDeleted: false,
     });
 
     if (populate) {
       query
-        .populate("clientId",   "bio mobileNumber profilePictureId")
+        .populate("clientId", "bio mobileNumber profilePictureId")
         .populate("providerId", "businessName providerContactInfo locationData")
-        .populate("serviceId",  "title slug servicePricing coverImage")
-        .populate("taskId",     "title status")
-        .populate("serviceRequestId", "clientMessage estimatedBudget discoveryContext");
+        .populate("serviceId", "title slug servicePricing coverImage")
+        .populate("taskId", "title status")
+        .populate(
+          "serviceRequestId",
+          "clientMessage estimatedBudget discoveryContext",
+        );
     }
 
     return (await query.lean()) as Booking | null;
@@ -432,9 +486,9 @@ export class BookingService {
     const queryOptions = includeDeleted ? { includeSoftDeleted: true } : {};
 
     return (await BookingModel.findOne(query, null, queryOptions)
-      .populate("clientId",   "bio mobileNumber profilePictureId")
+      .populate("clientId", "bio mobileNumber profilePictureId")
       .populate("providerId", "businessName providerContactInfo locationData")
-      .populate("serviceId",  "title slug servicePricing")
+      .populate("serviceId", "title slug servicePricing")
       .lean()) as Booking | null;
   }
 
@@ -445,7 +499,7 @@ export class BookingService {
   async getBookingByTask(taskId: string): Promise<Booking | null> {
     if (!Types.ObjectId.isValid(taskId)) throw new Error("Invalid task ID");
     return (await BookingModel.findOne({
-      taskId:    new Types.ObjectId(taskId),
+      taskId: new Types.ObjectId(taskId),
       isDeleted: false,
     }).lean()) as Booking | null;
   }
@@ -453,13 +507,15 @@ export class BookingService {
   /**
    * Returns a booking linked to a specific service request, if one exists.
    */
-  async getBookingByServiceRequest(serviceRequestId: string): Promise<Booking | null> {
+  async getBookingByServiceRequest(
+    serviceRequestId: string,
+  ): Promise<Booking | null> {
     if (!Types.ObjectId.isValid(serviceRequestId)) {
       throw new Error("Invalid service request ID");
     }
     return (await BookingModel.findOne({
       serviceRequestId: new Types.ObjectId(serviceRequestId),
-      isDeleted:        false,
+      isDeleted: false,
     }).lean()) as Booking | null;
   }
 
@@ -486,15 +542,15 @@ export class BookingService {
     const { status, paymentStatus, limit = 20, skip = 0 } = options;
 
     const query: Record<string, any> = {
-      clientId:  new Types.ObjectId(clientProfileId),
+      clientId: new Types.ObjectId(clientProfileId),
       isDeleted: false,
     };
-    if (status)        query.status        = status;
+    if (status) query.status = status;
     if (paymentStatus) query.paymentStatus = paymentStatus;
 
     const [bookings, total] = await Promise.all([
       BookingModel.find(query)
-        .populate("serviceId",  "title slug coverImage")
+        .populate("serviceId", "title slug coverImage")
         .populate("providerId", "businessName providerContactInfo locationData")
         .sort({ createdAt: -1 })
         .limit(limit)
@@ -533,14 +589,14 @@ export class BookingService {
 
     const query: Record<string, any> = {
       providerId: new Types.ObjectId(providerProfileId),
-      isDeleted:  false,
+      isDeleted: false,
     };
-    if (status)        query.status        = status;
+    if (status) query.status = status;
     if (paymentStatus) query.paymentStatus = paymentStatus;
 
     const [bookings, total] = await Promise.all([
       BookingModel.find(query)
-        .populate("clientId",  "bio mobileNumber profilePictureId")
+        .populate("clientId", "bio mobileNumber profilePictureId")
         .populate("serviceId", "title slug servicePricing")
         .sort({ createdAt: -1 })
         .limit(limit)
@@ -570,10 +626,15 @@ export class BookingService {
     bookingId: string,
     providerProfileId: string,
   ): Promise<Booking> {
-    if (!Types.ObjectId.isValid(bookingId))        throw new Error("Invalid booking ID");
-    if (!Types.ObjectId.isValid(providerProfileId)) throw new Error("Invalid provider profile ID");
+    if (!Types.ObjectId.isValid(bookingId))
+      throw new Error("Invalid booking ID");
+    if (!Types.ObjectId.isValid(providerProfileId))
+      throw new Error("Invalid provider profile ID");
 
-    const booking = await this.loadBookingForProvider(bookingId, providerProfileId);
+    const booking = await this.loadBookingForProvider(
+      bookingId,
+      providerProfileId,
+    );
 
     await booking.startService(new Types.ObjectId(providerProfileId));
     return booking.toObject() as Booking;
@@ -596,14 +657,19 @@ export class BookingService {
       providerMessage?: string;
     } = {},
   ): Promise<Booking> {
-    if (!Types.ObjectId.isValid(bookingId))        throw new Error("Invalid booking ID");
-    if (!Types.ObjectId.isValid(providerProfileId)) throw new Error("Invalid provider profile ID");
+    if (!Types.ObjectId.isValid(bookingId))
+      throw new Error("Invalid booking ID");
+    if (!Types.ObjectId.isValid(providerProfileId))
+      throw new Error("Invalid provider profile ID");
 
     if (options.finalPrice !== undefined && options.finalPrice < 0) {
       throw new Error("Final price cannot be negative");
     }
 
-    const booking = await this.loadBookingForProvider(bookingId, providerProfileId);
+    const booking = await this.loadBookingForProvider(
+      bookingId,
+      providerProfileId,
+    );
 
     await booking.complete(
       options.finalPrice,
@@ -635,8 +701,10 @@ export class BookingService {
     clientProfileId: string,
     payload: ValidateBookingRequestBody,
   ): Promise<Booking> {
-    if (!Types.ObjectId.isValid(bookingId))      throw new Error("Invalid booking ID");
-    if (!Types.ObjectId.isValid(clientProfileId)) throw new Error("Invalid client profile ID");
+    if (!Types.ObjectId.isValid(bookingId))
+      throw new Error("Invalid booking ID");
+    if (!Types.ObjectId.isValid(clientProfileId))
+      throw new Error("Invalid client profile ID");
 
     const booking = await this.loadBookingForClient(bookingId, clientProfileId);
 
@@ -658,7 +726,9 @@ export class BookingService {
       );
     } else {
       if (!payload.disputeReason?.trim()) {
-        throw new Error("A dispute reason is required when disputing a booking");
+        throw new Error(
+          "A dispute reason is required when disputing a booking",
+        );
       }
       await booking.validateCompletion(
         false,
@@ -689,32 +759,40 @@ export class BookingService {
     resolution: "approve" | "complete",
     notes?: string,
   ): Promise<Booking> {
-    if (!Types.ObjectId.isValid(bookingId)) throw new Error("Invalid booking ID");
-    if (!Types.ObjectId.isValid(adminId))   throw new Error("Invalid admin ID");
+    if (!Types.ObjectId.isValid(bookingId))
+      throw new Error("Invalid booking ID");
+    if (!Types.ObjectId.isValid(adminId)) throw new Error("Invalid admin ID");
 
     const booking = (await BookingModel.findOne({
-      _id:       new Types.ObjectId(bookingId),
-      status:    BookingStatus.DISPUTED,
+      _id: new Types.ObjectId(bookingId),
+      // ↓ accept both — admin can resolve with or without a provider rebuttal
+      status: {
+        $in: [BookingStatus.DISPUTED, BookingStatus.REBUTTAL_SUBMITTED],
+      },
       isDeleted: false,
     })) as BookingDocument | null;
 
     if (!booking) {
-      throw new Error("Booking not found or not in DISPUTED status");
+      throw new Error(
+        "Booking not found or not in DISPUTED / REBUTTAL_SUBMITTED status",
+      );
     }
 
     const newStatus =
-      resolution === "approve" ? BookingStatus.VALIDATED : BookingStatus.COMPLETED;
+      resolution === "approve"
+        ? BookingStatus.VALIDATED
+        : BookingStatus.COMPLETED;
 
     // Append admin resolution to statusHistory manually since the model
     // method validateCompletion() only handles the client-facing path.
     if (!booking.statusHistory) booking.statusHistory = [];
     booking.statusHistory.push({
-      status:    newStatus,
+      status: newStatus,
       timestamp: new Date(),
-      actor:     new Types.ObjectId(adminId),
+      actor: new Types.ObjectId(adminId),
       actorRole: ActorRole.ADMIN,
-      reason:    "Admin dispute resolution",
-      message:   notes?.trim(),
+      reason: "Admin dispute resolution",
+      message: notes?.trim(),
     });
 
     booking.status = newStatus;
@@ -724,6 +802,48 @@ export class BookingService {
     }
 
     await booking.save();
+    return booking.toObject() as Booking;
+  }
+
+  /**
+   * Provider contests a client's dispute by submitting a rebuttal.
+   *
+   * The booking must be in DISPUTED status. After submission the booking
+   * moves to REBUTTAL_SUBMITTED so the admin dashboard can surface it
+   * separately from uncontested disputes.
+   *
+   * Ownership guard: the caller must be the assigned provider.
+   *
+   * Transition: DISPUTED → REBUTTAL_SUBMITTED
+   */
+  async submitRebuttal(
+    bookingId: string,
+    providerProfileId: string,
+    message: string,
+  ): Promise<Booking> {
+    if (!Types.ObjectId.isValid(bookingId))
+      throw new Error("Invalid booking ID");
+    if (!Types.ObjectId.isValid(providerProfileId))
+      throw new Error("Invalid provider profile ID");
+    if (!message?.trim()) throw new Error("Rebuttal message is required");
+
+    const booking = await this.loadBookingForProvider(
+      bookingId,
+      providerProfileId,
+    );
+
+    if (booking.status !== BookingStatus.DISPUTED) {
+      throw new Error(
+        `Cannot submit a rebuttal on a booking with status: ${booking.status}. ` +
+          "Only DISPUTED bookings can be rebutted.",
+      );
+    }
+
+    await booking.submitRebuttal(
+      message.trim(),
+      new Types.ObjectId(providerProfileId),
+    );
+
     return booking.toObject() as Booking;
   }
 
@@ -747,12 +867,13 @@ export class BookingService {
     cancelledBy: ActorRole,
     actorId: string,
   ): Promise<Booking> {
-    if (!Types.ObjectId.isValid(bookingId)) throw new Error("Invalid booking ID");
-    if (!Types.ObjectId.isValid(actorId))   throw new Error("Invalid actor ID");
-    if (!reason?.trim())                    throw new Error("Cancellation reason is required");
+    if (!Types.ObjectId.isValid(bookingId))
+      throw new Error("Invalid booking ID");
+    if (!Types.ObjectId.isValid(actorId)) throw new Error("Invalid actor ID");
+    if (!reason?.trim()) throw new Error("Cancellation reason is required");
 
     const booking = (await BookingModel.findOne({
-      _id:       new Types.ObjectId(bookingId),
+      _id: new Types.ObjectId(bookingId),
       isDeleted: false,
     })) as BookingDocument | null;
 
@@ -761,7 +882,7 @@ export class BookingService {
     if (!CANCELLABLE_STATUSES.includes(booking.status)) {
       throw new Error(
         `Cannot cancel a booking with status: ${booking.status}. ` +
-        `Only ${CANCELLABLE_STATUSES.join(" and ")} bookings can be cancelled.`,
+          `Only ${CANCELLABLE_STATUSES.join(" and ")} bookings can be cancelled.`,
       );
     }
 
@@ -776,7 +897,11 @@ export class BookingService {
       }
     }
 
-    await booking.cancel(reason.trim(), cancelledBy, new Types.ObjectId(actorId));
+    await booking.cancel(
+      reason.trim(),
+      cancelledBy,
+      new Types.ObjectId(actorId),
+    );
     return booking.toObject() as Booking;
   }
 
@@ -798,12 +923,13 @@ export class BookingService {
     newDate: Date,
     newTimeSlot?: { start: string; end: string },
   ): Promise<Booking> {
-    if (!Types.ObjectId.isValid(bookingId)) throw new Error("Invalid booking ID");
-    if (!Types.ObjectId.isValid(actorId))   throw new Error("Invalid actor ID");
-    if (!newDate)                           throw new Error("New scheduled date is required");
+    if (!Types.ObjectId.isValid(bookingId))
+      throw new Error("Invalid booking ID");
+    if (!Types.ObjectId.isValid(actorId)) throw new Error("Invalid actor ID");
+    if (!newDate) throw new Error("New scheduled date is required");
 
     const booking = (await BookingModel.findOne({
-      _id:       new Types.ObjectId(bookingId),
+      _id: new Types.ObjectId(bookingId),
       isDeleted: false,
     })) as BookingDocument | null;
 
@@ -812,7 +938,7 @@ export class BookingService {
     if (!RESCHEDULABLE_STATUSES.includes(booking.status)) {
       throw new Error(
         `Cannot reschedule a booking with status: ${booking.status}. ` +
-        `Only CONFIRMED bookings can be rescheduled.`,
+          `Only CONFIRMED bookings can be rescheduled.`,
       );
     }
 
@@ -851,10 +977,11 @@ export class BookingService {
    * statusHistory audit trail.
    */
   async deleteBooking(bookingId: string, deletedBy?: string): Promise<boolean> {
-    if (!Types.ObjectId.isValid(bookingId)) throw new Error("Invalid booking ID");
+    if (!Types.ObjectId.isValid(bookingId))
+      throw new Error("Invalid booking ID");
 
     const booking = (await BookingModel.findOne({
-      _id:       new Types.ObjectId(bookingId),
+      _id: new Types.ObjectId(bookingId),
       isDeleted: false,
     })) as BookingDocument | null;
 
@@ -863,7 +990,7 @@ export class BookingService {
     if (!TERMINAL_STATUSES.includes(booking.status)) {
       throw new Error(
         `Cannot delete a booking with status: ${booking.status}. ` +
-        `Cancel the booking before deleting it.`,
+          `Cancel the booking before deleting it.`,
       );
     }
 
@@ -874,7 +1001,8 @@ export class BookingService {
   }
 
   async restoreBooking(bookingId: string): Promise<Booking | null> {
-    if (!Types.ObjectId.isValid(bookingId)) throw new Error("Invalid booking ID");
+    if (!Types.ObjectId.isValid(bookingId))
+      throw new Error("Invalid booking ID");
 
     const booking = (await BookingModel.findOne(
       { _id: new Types.ObjectId(bookingId), isDeleted: true },
@@ -907,10 +1035,11 @@ export class BookingService {
     paymentStatus: PaymentStatus,
     actorId?: string,
   ): Promise<Booking> {
-    if (!Types.ObjectId.isValid(bookingId)) throw new Error("Invalid booking ID");
+    if (!Types.ObjectId.isValid(bookingId))
+      throw new Error("Invalid booking ID");
 
     const booking = (await BookingModel.findOne({
-      _id:       new Types.ObjectId(bookingId),
+      _id: new Types.ObjectId(bookingId),
       isDeleted: false,
     })) as BookingDocument | null;
 
@@ -940,35 +1069,36 @@ export class BookingService {
    * results — hence we load the full document here.
    */
   async getPaymentSummary(bookingId: string): Promise<{
-    estimatedPrice:  number | undefined;
-    finalPrice:      number | undefined;
-    depositAmount:   number | undefined;
-    depositPaid:     boolean;
+    estimatedPrice: number | undefined;
+    finalPrice: number | undefined;
+    depositAmount: number | undefined;
+    depositPaid: boolean;
     depositRemaining: number;
     balanceRemaining: number;
-    currency:        string;
-    paymentStatus:   PaymentStatus;
+    currency: string;
+    paymentStatus: PaymentStatus;
   }> {
-    if (!Types.ObjectId.isValid(bookingId)) throw new Error("Invalid booking ID");
+    if (!Types.ObjectId.isValid(bookingId))
+      throw new Error("Invalid booking ID");
 
     // Must NOT use .lean() — virtuals (depositRemaining, balanceRemaining) are
     // computed on the Mongoose document prototype and are unavailable on plain objects.
     const booking = (await BookingModel.findOne({
-      _id:       new Types.ObjectId(bookingId),
+      _id: new Types.ObjectId(bookingId),
       isDeleted: false,
     })) as BookingDocument | null;
 
     if (!booking) throw new Error("Booking not found");
 
     return {
-      estimatedPrice:   booking.estimatedPrice,
-      finalPrice:       booking.finalPrice,
-      depositAmount:    booking.depositAmount,
-      depositPaid:      booking.depositPaid ?? false,
+      estimatedPrice: booking.estimatedPrice,
+      finalPrice: booking.finalPrice,
+      depositAmount: booking.depositAmount,
+      depositPaid: booking.depositPaid ?? false,
       depositRemaining: (booking as any).depositRemaining ?? 0,
       balanceRemaining: (booking as any).balanceRemaining ?? 0,
-      currency:         booking.currency,
-      paymentStatus:    booking.paymentStatus,
+      currency: booking.currency,
+      paymentStatus: booking.paymentStatus,
     };
   }
 
@@ -990,15 +1120,15 @@ export class BookingService {
     const now = new Date();
 
     const query = {
-      providerId:    new Types.ObjectId(providerProfileId),
-      status:        BookingStatus.CONFIRMED,
+      providerId: new Types.ObjectId(providerProfileId),
+      status: BookingStatus.CONFIRMED,
       scheduledDate: { $gte: now },
-      isDeleted:     false,
+      isDeleted: false,
     };
 
     const [bookings, total] = await Promise.all([
       BookingModel.find(query)
-        .populate("clientId",  "bio mobileNumber profilePictureId")
+        .populate("clientId", "bio mobileNumber profilePictureId")
         .populate("serviceId", "title slug")
         .sort({ scheduledDate: 1 })
         .limit(limit)
@@ -1030,7 +1160,8 @@ export class BookingService {
     if (!Types.ObjectId.isValid(providerProfileId)) {
       throw new Error("Invalid provider profile ID");
     }
-    if (!startDate || !endDate) throw new Error("Start date and end date are required");
+    if (!startDate || !endDate)
+      throw new Error("Start date and end date are required");
     if (startDate > endDate) {
       throw new Error("Start date must be before end date");
     }
@@ -1038,15 +1169,15 @@ export class BookingService {
     const { limit = 50, skip = 0 } = options;
 
     const query = {
-      providerId:    new Types.ObjectId(providerProfileId),
+      providerId: new Types.ObjectId(providerProfileId),
       scheduledDate: { $gte: startDate, $lte: endDate },
-      status:        { $in: [BookingStatus.CONFIRMED, BookingStatus.IN_PROGRESS] },
-      isDeleted:     false,
+      status: { $in: [BookingStatus.CONFIRMED, BookingStatus.IN_PROGRESS] },
+      isDeleted: false,
     };
 
     const [bookings, total] = await Promise.all([
       BookingModel.find(query)
-        .populate("clientId",  "bio mobileNumber profilePictureId")
+        .populate("clientId", "bio mobileNumber profilePictureId")
         .populate("serviceId", "title slug")
         .sort({ scheduledDate: 1 })
         .limit(limit)
@@ -1072,15 +1203,15 @@ export class BookingService {
     const { limit = 50, skip = 0 } = options;
 
     const query = {
-      status:    { $in: [BookingStatus.CONFIRMED, BookingStatus.IN_PROGRESS] },
+      status: { $in: [BookingStatus.CONFIRMED, BookingStatus.IN_PROGRESS] },
       isDeleted: false,
     };
 
     const [bookings, total] = await Promise.all([
       BookingModel.find(query)
-        .populate("clientId",   "bio mobileNumber")
+        .populate("clientId", "bio mobileNumber")
         .populate("providerId", "businessName providerContactInfo")
-        .populate("serviceId",  "title slug")
+        .populate("serviceId", "title slug")
         .sort({ scheduledDate: 1 })
         .limit(limit)
         .skip(skip)
@@ -1105,15 +1236,15 @@ export class BookingService {
     const { limit = 50, skip = 0 } = options;
 
     const query = {
-      status:    BookingStatus.AWAITING_VALIDATION,
+      status: BookingStatus.AWAITING_VALIDATION,
       isDeleted: false,
     };
 
     const [bookings, total] = await Promise.all([
       BookingModel.find(query)
-        .populate("clientId",   "bio mobileNumber")
+        .populate("clientId", "bio mobileNumber")
         .populate("providerId", "businessName providerContactInfo")
-        .populate("serviceId",  "title slug")
+        .populate("serviceId", "title slug")
         .sort({ createdAt: -1 })
         .limit(limit)
         .skip(skip)
@@ -1138,15 +1269,18 @@ export class BookingService {
     const { limit = 50, skip = 0 } = options;
 
     const query = {
-      status:    BookingStatus.DISPUTED,
+      // ↓ surface rebutted disputes alongside uncontested ones
+      status: {
+        $in: [BookingStatus.DISPUTED, BookingStatus.REBUTTAL_SUBMITTED],
+      },
       isDeleted: false,
     };
 
     const [bookings, total] = await Promise.all([
       BookingModel.find(query)
-        .populate("clientId",   "bio mobileNumber")
+        .populate("clientId", "bio mobileNumber")
         .populate("providerId", "businessName providerContactInfo")
-        .populate("serviceId",  "title slug")
+        .populate("serviceId", "title slug")
         .sort({ disputedAt: 1 })
         .limit(limit)
         .skip(skip)
@@ -1182,7 +1316,7 @@ export class BookingService {
 
     const idField =
       actorRole === ActorRole.CUSTOMER ? "clientId" : "providerId";
-    const base    = { [idField]: new Types.ObjectId(actorId), isDeleted: false };
+    const base = { [idField]: new Types.ObjectId(actorId), isDeleted: false };
 
     const [total, active, awaitingValidation, completed, cancelled, disputed] =
       await Promise.all([
@@ -1199,11 +1333,24 @@ export class BookingService {
           ...base,
           status: { $in: [BookingStatus.VALIDATED, BookingStatus.COMPLETED] },
         }),
-        BookingModel.countDocuments({ ...base, status: BookingStatus.CANCELLED }),
-        BookingModel.countDocuments({ ...base, status: BookingStatus.DISPUTED }),
+        BookingModel.countDocuments({
+          ...base,
+          status: BookingStatus.CANCELLED,
+        }),
+        BookingModel.countDocuments({
+          ...base,
+          status: BookingStatus.DISPUTED,
+        }),
       ]);
 
-    return { total, active, awaitingValidation, completed, cancelled, disputed };
+    return {
+      total,
+      active,
+      awaitingValidation,
+      completed,
+      cancelled,
+      disputed,
+    };
   }
 
   // ─── Admin Operations ─────────────────────────────────────────────────────────
@@ -1223,13 +1370,21 @@ export class BookingService {
     } = {},
   ): Promise<{ bookings: Booking[]; total: number; hasMore: boolean }> {
     const { limit, skip } = pagination;
-    const { status, paymentStatus, clientId, providerId, includeDeleted = false } = filters;
+    const {
+      status,
+      paymentStatus,
+      clientId,
+      providerId,
+      includeDeleted = false,
+    } = filters;
 
-    const query: Record<string, any> = includeDeleted ? {} : { isDeleted: false };
-    if (status)        query.status        = status;
+    const query: Record<string, any> = includeDeleted
+      ? {}
+      : { isDeleted: false };
+    if (status) query.status = status;
     if (paymentStatus) query.paymentStatus = paymentStatus;
-    if (clientId   && Types.ObjectId.isValid(clientId)) {
-      query.clientId   = new Types.ObjectId(clientId);
+    if (clientId && Types.ObjectId.isValid(clientId)) {
+      query.clientId = new Types.ObjectId(clientId);
     }
     if (providerId && Types.ObjectId.isValid(providerId)) {
       query.providerId = new Types.ObjectId(providerId);
@@ -1239,9 +1394,9 @@ export class BookingService {
 
     const [bookings, total] = await Promise.all([
       BookingModel.find(query, null, queryOptions)
-        .populate("clientId",   "bio mobileNumber")
+        .populate("clientId", "bio mobileNumber")
         .populate("providerId", "businessName providerContactInfo")
-        .populate("serviceId",  "title slug")
+        .populate("serviceId", "title slug")
         .sort({ createdAt: -1 })
         .limit(limit)
         .skip(skip)
@@ -1266,10 +1421,12 @@ export class BookingService {
    * averageRating  = mean of all customerRating values (from validated bookings only)
    * disputeRate    = DISPUTED / (VALIDATED + COMPLETED + DISPUTED)
    */
-  async getBookingStats(options: {
-    actorId?:   string;
-    actorRole?: ActorRole.CUSTOMER | ActorRole.PROVIDER;
-  } = {}): Promise<{
+  async getBookingStats(
+    options: {
+      actorId?: string;
+      actorRole?: ActorRole.CUSTOMER | ActorRole.PROVIDER;
+    } = {},
+  ): Promise<{
     total: number;
     confirmed: number;
     inProgress: number;
@@ -1288,8 +1445,9 @@ export class BookingService {
 
     const base: Record<string, any> = {};
     if (actorId && Types.ObjectId.isValid(actorId) && actorRole) {
-      const idField  = actorRole === ActorRole.CUSTOMER ? "clientId" : "providerId";
-      base[idField]  = new Types.ObjectId(actorId);
+      const idField =
+        actorRole === ActorRole.CUSTOMER ? "clientId" : "providerId";
+      base[idField] = new Types.ObjectId(actorId);
     }
 
     const [
@@ -1306,35 +1464,63 @@ export class BookingService {
       revenueAgg,
     ] = await Promise.all([
       BookingModel.countDocuments({ ...base, isDeleted: false }),
-      BookingModel.countDocuments({ ...base, isDeleted: false, status: BookingStatus.CONFIRMED }),
-      BookingModel.countDocuments({ ...base, isDeleted: false, status: BookingStatus.IN_PROGRESS }),
-      BookingModel.countDocuments({ ...base, isDeleted: false, status: BookingStatus.AWAITING_VALIDATION }),
-      BookingModel.countDocuments({ ...base, isDeleted: false, status: BookingStatus.VALIDATED }),
-      BookingModel.countDocuments({ ...base, isDeleted: false, status: BookingStatus.COMPLETED }),
-      BookingModel.countDocuments({ ...base, isDeleted: false, status: BookingStatus.DISPUTED }),
-      BookingModel.countDocuments({ ...base, isDeleted: false, status: BookingStatus.CANCELLED }),
+      BookingModel.countDocuments({
+        ...base,
+        isDeleted: false,
+        status: BookingStatus.CONFIRMED,
+      }),
+      BookingModel.countDocuments({
+        ...base,
+        isDeleted: false,
+        status: BookingStatus.IN_PROGRESS,
+      }),
+      BookingModel.countDocuments({
+        ...base,
+        isDeleted: false,
+        status: BookingStatus.AWAITING_VALIDATION,
+      }),
+      BookingModel.countDocuments({
+        ...base,
+        isDeleted: false,
+        status: BookingStatus.VALIDATED,
+      }),
+      BookingModel.countDocuments({
+        ...base,
+        isDeleted: false,
+        status: BookingStatus.COMPLETED,
+      }),
+      BookingModel.countDocuments({
+        ...base,
+        isDeleted: false,
+        status: {
+          $in: [BookingStatus.DISPUTED, BookingStatus.REBUTTAL_SUBMITTED],
+        },
+      }),
+      BookingModel.countDocuments({
+        ...base,
+        isDeleted: false,
+        status: BookingStatus.CANCELLED,
+      }),
       BookingModel.countDocuments({ ...base, isDeleted: true }),
 
-      // Average customer rating across all validated bookings that have one
-      BookingModel.aggregate([
+      BookingModel.aggregate<{ avg: number }>([
         {
           $match: {
             ...base,
-            isDeleted:      false,
-            status:         { $in: [BookingStatus.VALIDATED, BookingStatus.COMPLETED] },
+            isDeleted: false,
+            status: { $in: [BookingStatus.VALIDATED, BookingStatus.COMPLETED] },
             customerRating: { $exists: true, $ne: null },
           },
         },
         { $group: { _id: null, avg: { $avg: "$customerRating" } } },
       ]),
 
-      // Total finalPrice revenue from validated/completed bookings
-      BookingModel.aggregate([
+      BookingModel.aggregate<{ total: number }>([
         {
           $match: {
             ...base,
-            isDeleted:  false,
-            status:     { $in: [BookingStatus.VALIDATED, BookingStatus.COMPLETED] },
+            isDeleted: false,
+            status: { $in: [BookingStatus.VALIDATED, BookingStatus.COMPLETED] },
             finalPrice: { $exists: true, $ne: null },
           },
         },
@@ -1346,9 +1532,7 @@ export class BookingService {
     const disputedOrResolved = disputed + resolvedBookings;
 
     const completionRate =
-      total > 0
-        ? parseFloat((((resolvedBookings) / total) * 100).toFixed(2))
-        : 0;
+      total > 0 ? parseFloat(((resolvedBookings / total) * 100).toFixed(2)) : 0;
 
     const disputeRate =
       disputedOrResolved > 0
@@ -1356,9 +1540,7 @@ export class BookingService {
         : 0;
 
     const averageRating =
-      ratingAgg.length > 0
-        ? parseFloat(ratingAgg[0].avg.toFixed(2))
-        : null;
+      ratingAgg.length > 0 ? parseFloat(ratingAgg[0].avg.toFixed(2)) : null;
 
     const totalRevenue =
       revenueAgg.length > 0 ? parseFloat(revenueAgg[0].total.toFixed(2)) : 0;
@@ -1391,9 +1573,9 @@ export class BookingService {
     providerProfileId: string,
   ): Promise<BookingDocument> {
     const booking = (await BookingModel.findOne({
-      _id:        new Types.ObjectId(bookingId),
+      _id: new Types.ObjectId(bookingId),
       providerId: new Types.ObjectId(providerProfileId),
-      isDeleted:  false,
+      isDeleted: false,
     })) as BookingDocument | null;
 
     if (!booking) {
@@ -1414,15 +1596,13 @@ export class BookingService {
     clientProfileId: string,
   ): Promise<BookingDocument> {
     const booking = (await BookingModel.findOne({
-      _id:       new Types.ObjectId(bookingId),
-      clientId:  new Types.ObjectId(clientProfileId),
+      _id: new Types.ObjectId(bookingId),
+      clientId: new Types.ObjectId(clientProfileId),
       isDeleted: false,
     })) as BookingDocument | null;
 
     if (!booking) {
-      throw new Error(
-        "Booking not found or you do not own this booking",
-      );
+      throw new Error("Booking not found or you do not own this booking");
     }
 
     return booking;

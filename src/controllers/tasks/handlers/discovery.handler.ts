@@ -9,7 +9,6 @@ import {
 import { taskService } from "../../../service/tasks/task.service";
 
 export class TaskDiscoveryHandler {
-
   /**
    * GET /tasks/floating
    *
@@ -28,14 +27,14 @@ export class TaskDiscoveryHandler {
    */
   getFloatingTasks = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
-      const region     = req.query.region     as string | undefined;
-      const city       = req.query.city       as string | undefined;
+      const region = req.query.region as string | undefined;
+      const city = req.query.city as string | undefined;
       const categoryId = req.query.categoryId as string | undefined;
-      const limit      = parseInt(String(req.query.limit ?? "20"), 10);
-      const skip       = parseInt(String(req.query.skip  ?? "0"),  10);
+      const limit = parseInt(String(req.query.limit ?? "20"), 10);
+      const skip = parseInt(String(req.query.skip ?? "0"), 10);
 
       if (categoryId && !validateObjectId(categoryId)) {
         res.status(400).json({
@@ -50,7 +49,7 @@ export class TaskDiscoveryHandler {
         { region, city, categoryId },
         {
           limit: isNaN(limit) ? 20 : Math.min(100, Math.max(1, limit)),
-          skip:  isNaN(skip)  ? 0  : Math.max(0, skip),
+          skip: isNaN(skip) ? 0 : Math.max(0, skip),
         },
       );
 
@@ -80,7 +79,7 @@ export class TaskDiscoveryHandler {
    */
   getMatchedTasksForProvider = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const providerProfileId = getParam(req.params.providerProfileId);
@@ -95,13 +94,13 @@ export class TaskDiscoveryHandler {
       }
 
       const limit = parseInt(String(req.query.limit ?? "20"), 10);
-      const skip  = parseInt(String(req.query.skip  ?? "0"),  10);
+      const skip = parseInt(String(req.query.skip ?? "0"), 10);
 
       const result = await taskService.getMatchedTasksForProvider(
         providerProfileId,
         {
           limit: isNaN(limit) ? 20 : Math.min(100, Math.max(1, limit)),
-          skip:  isNaN(skip)  ? 0  : Math.max(0, skip),
+          skip: isNaN(skip) ? 0 : Math.max(0, skip),
         },
       );
 
@@ -112,6 +111,54 @@ export class TaskDiscoveryHandler {
       });
     } catch (error) {
       handleError(res, error, "Failed to retrieve matched tasks for provider");
+    }
+  };
+
+  // ─── Add to TaskDiscoveryHandler class ────────────────────────────────────────
+  // Place after getTasksWithProviderInterest handler
+
+  /**
+   * GET /tasks/provider/:providerProfileId/accepted
+   * Query: limit?, skip?
+   *
+   * Tasks where the provider is the acceptedProvider.
+   * Returns ACCEPTED (awaiting booking) and CONVERTED (booking created) tasks.
+   * Provider role required.
+   */
+  getAcceptedTasksForProvider = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      const providerProfileId = getParam(req.params.providerProfileId);
+
+      if (!validateObjectId(providerProfileId)) {
+        res.status(400).json({
+          success: false,
+          message: "Validation error",
+          error: "providerProfileId must be a valid ObjectId",
+        });
+        return;
+      }
+
+      const limit = parseInt(String(req.query.limit ?? "20"), 10);
+      const skip = parseInt(String(req.query.skip ?? "0"), 10);
+
+      const result = await taskService.getAcceptedTasksForProvider(
+        providerProfileId,
+        {
+          limit: isNaN(limit) ? 20 : Math.min(100, Math.max(1, limit)),
+          skip: isNaN(skip) ? 0 : Math.max(0, skip),
+        },
+      );
+
+      res.status(200).json({
+        success: true,
+        message: `Retrieved ${result.tasks.length} accepted task(s)`,
+        ...result,
+      });
+    } catch (error) {
+      handleError(res, error, "Failed to retrieve accepted tasks");
     }
   };
 
@@ -128,7 +175,7 @@ export class TaskDiscoveryHandler {
    */
   getPendingRequestsForProvider = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const providerProfileId = getParam(req.params.providerProfileId);
@@ -143,13 +190,13 @@ export class TaskDiscoveryHandler {
       }
 
       const limit = parseInt(String(req.query.limit ?? "20"), 10);
-      const skip  = parseInt(String(req.query.skip  ?? "0"),  10);
+      const skip = parseInt(String(req.query.skip ?? "0"), 10);
 
       const result = await taskService.getPendingRequestsForProvider(
         providerProfileId,
         {
           limit: isNaN(limit) ? 20 : Math.min(100, Math.max(1, limit)),
-          skip:  isNaN(skip)  ? 0  : Math.max(0, skip),
+          skip: isNaN(skip) ? 0 : Math.max(0, skip),
         },
       );
 
@@ -159,7 +206,11 @@ export class TaskDiscoveryHandler {
         ...result,
       });
     } catch (error) {
-      handleError(res, error, "Failed to retrieve pending task requests for provider");
+      handleError(
+        res,
+        error,
+        "Failed to retrieve pending task requests for provider",
+      );
     }
   };
 
@@ -174,7 +225,7 @@ export class TaskDiscoveryHandler {
    */
   getTasksWithProviderInterest = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const providerProfileId = getParam(req.params.providerProfileId);
@@ -189,13 +240,13 @@ export class TaskDiscoveryHandler {
       }
 
       const limit = parseInt(String(req.query.limit ?? "20"), 10);
-      const skip  = parseInt(String(req.query.skip  ?? "0"),  10);
+      const skip = parseInt(String(req.query.skip ?? "0"), 10);
 
       const result = await taskService.getTasksWithProviderInterest(
         providerProfileId,
         {
           limit: isNaN(limit) ? 20 : Math.min(100, Math.max(1, limit)),
-          skip:  isNaN(skip)  ? 0  : Math.max(0, skip),
+          skip: isNaN(skip) ? 0 : Math.max(0, skip),
         },
       );
 
@@ -205,7 +256,11 @@ export class TaskDiscoveryHandler {
         ...result,
       });
     } catch (error) {
-      handleError(res, error, "Failed to retrieve tasks with provider interest");
+      handleError(
+        res,
+        error,
+        "Failed to retrieve tasks with provider interest",
+      );
     }
   };
 
@@ -228,7 +283,7 @@ export class TaskDiscoveryHandler {
    */
   searchTasks = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const searchTerm = req.query.q as string | undefined;
@@ -242,12 +297,12 @@ export class TaskDiscoveryHandler {
         return;
       }
 
-      const status     = req.query.status     as TaskStatus | undefined;
-      const categoryId = req.query.categoryId as string   | undefined;
-      const region     = req.query.region     as string   | undefined;
-      const clientId   = req.query.clientId   as string   | undefined;
-      const limit      = parseInt(String(req.query.limit ?? "20"), 10);
-      const skip       = parseInt(String(req.query.skip  ?? "0"),  10);
+      const status = req.query.status as TaskStatus | undefined;
+      const categoryId = req.query.categoryId as string | undefined;
+      const region = req.query.region as string | undefined;
+      const clientId = req.query.clientId as string | undefined;
+      const limit = parseInt(String(req.query.limit ?? "20"), 10);
+      const skip = parseInt(String(req.query.skip ?? "0"), 10);
 
       if (status && !Object.values(TaskStatus).includes(status)) {
         res.status(400).json({
@@ -258,11 +313,19 @@ export class TaskDiscoveryHandler {
         return;
       }
       if (categoryId && !validateObjectId(categoryId)) {
-        res.status(400).json({ success: false, message: "Validation error", error: "categoryId must be a valid ObjectId" });
+        res.status(400).json({
+          success: false,
+          message: "Validation error",
+          error: "categoryId must be a valid ObjectId",
+        });
         return;
       }
       if (clientId && !validateObjectId(clientId)) {
-        res.status(400).json({ success: false, message: "Validation error", error: "clientId must be a valid ObjectId" });
+        res.status(400).json({
+          success: false,
+          message: "Validation error",
+          error: "clientId must be a valid ObjectId",
+        });
         return;
       }
 
@@ -271,7 +334,7 @@ export class TaskDiscoveryHandler {
         { status, categoryId, region, clientId },
         {
           limit: isNaN(limit) ? 20 : Math.min(100, Math.max(1, limit)),
-          skip:  isNaN(skip)  ? 0  : Math.max(0, skip),
+          skip: isNaN(skip) ? 0 : Math.max(0, skip),
         },
       );
 
@@ -281,8 +344,15 @@ export class TaskDiscoveryHandler {
         ...result,
       });
     } catch (error) {
-      if (error instanceof Error && error.message.includes("Search term is required")) {
-        res.status(400).json({ success: false, message: "Validation error", error: error.message });
+      if (
+        error instanceof Error &&
+        error.message.includes("Search term is required")
+      ) {
+        res.status(400).json({
+          success: false,
+          message: "Validation error",
+          error: error.message,
+        });
         return;
       }
       handleError(res, error, "Failed to search tasks");

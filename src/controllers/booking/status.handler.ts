@@ -89,7 +89,6 @@ const resolveClientProfileId = async (
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 export class BookingStatusHandler {
-
   /**
    * POST /bookings/:bookingId/start
    *
@@ -100,19 +99,28 @@ export class BookingStatusHandler {
    */
   startService = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const bookingId = getParam(req.params.bookingId);
       if (!validateObjectId(bookingId)) {
-        res.status(400).json({ success: false, message: "Validation error", error: "bookingId must be a valid ObjectId" });
+        res
+          .status(400)
+          .json({
+            success: false,
+            message: "Validation error",
+            error: "bookingId must be a valid ObjectId",
+          });
         return;
       }
 
       const providerProfileId = await resolveProviderProfileId(req, res);
       if (!providerProfileId) return; // response already sent
 
-      const booking = await bookingService.startService(bookingId, providerProfileId);
+      const booking = await bookingService.startService(
+        bookingId,
+        providerProfileId,
+      );
 
       res.status(200).json({
         success: true,
@@ -121,12 +129,30 @@ export class BookingStatusHandler {
       });
     } catch (error) {
       if (error instanceof Error) {
-        if (error.message.includes("not found") || error.message.includes("not the provider")) {
-          res.status(404).json({ success: false, message: "Booking not found", error: error.message });
+        if (
+          error.message.includes("not found") ||
+          error.message.includes("not the provider")
+        ) {
+          res
+            .status(404)
+            .json({
+              success: false,
+              message: "Booking not found",
+              error: error.message,
+            });
           return;
         }
-        if (error.message.includes("Cannot") || error.message.includes("status")) {
-          res.status(400).json({ success: false, message: "Cannot start service", error: error.message });
+        if (
+          error.message.includes("Cannot") ||
+          error.message.includes("status")
+        ) {
+          res
+            .status(400)
+            .json({
+              success: false,
+              message: "Cannot start service",
+              error: error.message,
+            });
           return;
         }
       }
@@ -148,12 +174,18 @@ export class BookingStatusHandler {
    */
   completeService = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const bookingId = getParam(req.params.bookingId);
       if (!validateObjectId(bookingId)) {
-        res.status(400).json({ success: false, message: "Validation error", error: "bookingId must be a valid ObjectId" });
+        res
+          .status(400)
+          .json({
+            success: false,
+            message: "Validation error",
+            error: "bookingId must be a valid ObjectId",
+          });
         return;
       }
 
@@ -165,7 +197,10 @@ export class BookingStatusHandler {
         providerMessage?: string;
       };
 
-      if (finalPrice !== undefined && (typeof finalPrice !== "number" || finalPrice < 0)) {
+      if (
+        finalPrice !== undefined &&
+        (typeof finalPrice !== "number" || finalPrice < 0)
+      ) {
         res.status(400).json({
           success: false,
           message: "Validation error",
@@ -174,10 +209,14 @@ export class BookingStatusHandler {
         return;
       }
 
-      const booking = await bookingService.completeService(bookingId, providerProfileId, {
-        finalPrice,
-        providerMessage,
-      });
+      const booking = await bookingService.completeService(
+        bookingId,
+        providerProfileId,
+        {
+          finalPrice,
+          providerMessage,
+        },
+      );
 
       res.status(200).json({
         success: true,
@@ -186,12 +225,30 @@ export class BookingStatusHandler {
       });
     } catch (error) {
       if (error instanceof Error) {
-        if (error.message.includes("not found") || error.message.includes("not the provider")) {
-          res.status(404).json({ success: false, message: "Booking not found", error: error.message });
+        if (
+          error.message.includes("not found") ||
+          error.message.includes("not the provider")
+        ) {
+          res
+            .status(404)
+            .json({
+              success: false,
+              message: "Booking not found",
+              error: error.message,
+            });
           return;
         }
-        if (error.message.includes("Cannot") || error.message.includes("negative")) {
-          res.status(400).json({ success: false, message: "Cannot complete service", error: error.message });
+        if (
+          error.message.includes("Cannot") ||
+          error.message.includes("negative")
+        ) {
+          res
+            .status(400)
+            .json({
+              success: false,
+              message: "Cannot complete service",
+              error: error.message,
+            });
           return;
         }
       }
@@ -214,12 +271,18 @@ export class BookingStatusHandler {
    */
   validateCompletion = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const bookingId = getParam(req.params.bookingId);
       if (!validateObjectId(bookingId)) {
-        res.status(400).json({ success: false, message: "Validation error", error: "bookingId must be a valid ObjectId" });
+        res
+          .status(400)
+          .json({
+            success: false,
+            message: "Validation error",
+            error: "bookingId must be a valid ObjectId",
+          });
         return;
       }
 
@@ -238,11 +301,16 @@ export class BookingStatusHandler {
       }
 
       if (payload.approved) {
-        if (typeof payload.rating !== "number" || payload.rating < 1 || payload.rating > 5) {
+        if (
+          typeof payload.rating !== "number" ||
+          payload.rating < 1 ||
+          payload.rating > 5
+        ) {
           res.status(400).json({
             success: false,
             message: "Validation error",
-            error: "rating is required and must be a number between 1 and 5 when approving",
+            error:
+              "rating is required and must be a number between 1 and 5 when approving",
           });
           return;
         }
@@ -274,12 +342,30 @@ export class BookingStatusHandler {
       });
     } catch (error) {
       if (error instanceof Error) {
-        if (error.message.includes("not found") || error.message.includes("do not own")) {
-          res.status(404).json({ success: false, message: "Booking not found", error: error.message });
+        if (
+          error.message.includes("not found") ||
+          error.message.includes("do not own")
+        ) {
+          res
+            .status(404)
+            .json({
+              success: false,
+              message: "Booking not found",
+              error: error.message,
+            });
           return;
         }
-        if (error.message.includes("Cannot validate") || error.message.includes("Rating")) {
-          res.status(400).json({ success: false, message: "Cannot validate booking", error: error.message });
+        if (
+          error.message.includes("Cannot validate") ||
+          error.message.includes("Rating")
+        ) {
+          res
+            .status(400)
+            .json({
+              success: false,
+              message: "Cannot validate booking",
+              error: error.message,
+            });
           return;
         }
       }
@@ -304,12 +390,18 @@ export class BookingStatusHandler {
    */
   cancelBooking = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const bookingId = getParam(req.params.bookingId);
       if (!validateObjectId(bookingId)) {
-        res.status(400).json({ success: false, message: "Validation error", error: "bookingId must be a valid ObjectId" });
+        res
+          .status(400)
+          .json({
+            success: false,
+            message: "Validation error",
+            error: "bookingId must be a valid ObjectId",
+          });
         return;
       }
 
@@ -319,11 +411,21 @@ export class BookingStatusHandler {
       };
 
       if (!reason?.trim()) {
-        res.status(400).json({ success: false, message: "Validation error", error: "reason is required" });
+        res
+          .status(400)
+          .json({
+            success: false,
+            message: "Validation error",
+            error: "reason is required",
+          });
         return;
       }
 
-      const validRoles: ActorRole[] = [ActorRole.CUSTOMER, ActorRole.PROVIDER, ActorRole.ADMIN];
+      const validRoles: ActorRole[] = [
+        ActorRole.CUSTOMER,
+        ActorRole.PROVIDER,
+        ActorRole.ADMIN,
+      ];
       if (!cancelledBy || !validRoles.includes(cancelledBy)) {
         res.status(400).json({
           success: false,
@@ -351,7 +453,8 @@ export class BookingStatusHandler {
         res.status(403).json({
           success: false,
           message: "Access denied",
-          error: "Admin privileges are required to cancel on behalf of the admin role",
+          error:
+            "Admin privileges are required to cancel on behalf of the admin role",
         });
         return;
       }
@@ -371,7 +474,13 @@ export class BookingStatusHandler {
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes("not found")) {
-          res.status(404).json({ success: false, message: "Booking not found", error: error.message });
+          res
+            .status(404)
+            .json({
+              success: false,
+              message: "Booking not found",
+              error: error.message,
+            });
           return;
         }
         if (
@@ -379,11 +488,108 @@ export class BookingStatusHandler {
           error.message.includes("do not own") ||
           error.message.includes("not the provider")
         ) {
-          res.status(400).json({ success: false, message: "Cannot cancel booking", error: error.message });
+          res
+            .status(400)
+            .json({
+              success: false,
+              message: "Cannot cancel booking",
+              error: error.message,
+            });
           return;
         }
       }
       handleError(res, error, "Failed to cancel booking");
+    }
+  };
+
+  /**
+   * POST /bookings/:bookingId/rebut
+   *
+   * Provider contests a client's dispute with a written rebuttal.
+   * Transition: DISPUTED → REBUTTAL_SUBMITTED
+   *
+   * Body:
+   *   - message (required) — provider's rebuttal, max 2000 chars
+   *
+   * The authenticated user must be the provider on the booking.
+   * Can only be called once — a REBUTTAL_SUBMITTED booking cannot be rebutted again.
+   */
+  submitRebuttal = async (
+    req: AuthenticatedRequest,
+    res: Response,
+  ): Promise<void> => {
+    try {
+      const bookingId = getParam(req.params.bookingId);
+      if (!validateObjectId(bookingId)) {
+        res.status(400).json({
+          success: false,
+          message: "Validation error",
+          error: "bookingId must be a valid ObjectId",
+        });
+        return;
+      }
+
+      const providerProfileId = await resolveProviderProfileId(req, res);
+      if (!providerProfileId) return;
+
+      const { message } = req.body as { message?: string };
+
+      if (!message?.trim()) {
+        res.status(400).json({
+          success: false,
+          message: "Validation error",
+          error: "message is required",
+        });
+        return;
+      }
+
+      if (message.trim().length > 2000) {
+        res.status(400).json({
+          success: false,
+          message: "Validation error",
+          error: "message must not exceed 2000 characters",
+        });
+        return;
+      }
+
+      const booking = await bookingService.submitRebuttal(
+        bookingId,
+        providerProfileId,
+        message,
+      );
+
+      res.status(200).json({
+        success: true,
+        message:
+          "Rebuttal submitted — an admin will review the dispute shortly",
+        booking,
+      });
+    } catch (error) {
+      if (error instanceof Error) {
+        if (
+          error.message.includes("not found") ||
+          error.message.includes("not the provider")
+        ) {
+          res.status(404).json({
+            success: false,
+            message: "Booking not found",
+            error: error.message,
+          });
+          return;
+        }
+        if (
+          error.message.includes("Cannot submit") ||
+          error.message.includes("status")
+        ) {
+          res.status(400).json({
+            success: false,
+            message: "Cannot submit rebuttal",
+            error: error.message,
+          });
+          return;
+        }
+      }
+      handleError(res, error, "Failed to submit rebuttal");
     }
   };
 
@@ -402,12 +608,18 @@ export class BookingStatusHandler {
    */
   rescheduleBooking = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const bookingId = getParam(req.params.bookingId);
       if (!validateObjectId(bookingId)) {
-        res.status(400).json({ success: false, message: "Validation error", error: "bookingId must be a valid ObjectId" });
+        res
+          .status(400)
+          .json({
+            success: false,
+            message: "Validation error",
+            error: "bookingId must be a valid ObjectId",
+          });
         return;
       }
 
@@ -418,17 +630,33 @@ export class BookingStatusHandler {
       };
 
       if (!newDate) {
-        res.status(400).json({ success: false, message: "Validation error", error: "newDate is required" });
+        res
+          .status(400)
+          .json({
+            success: false,
+            message: "Validation error",
+            error: "newDate is required",
+          });
         return;
       }
 
       const scheduledDate = new Date(newDate);
       if (isNaN(scheduledDate.getTime())) {
-        res.status(400).json({ success: false, message: "Validation error", error: "newDate must be a valid date string" });
+        res
+          .status(400)
+          .json({
+            success: false,
+            message: "Validation error",
+            error: "newDate must be a valid date string",
+          });
         return;
       }
 
-      const validRoles: ActorRole[] = [ActorRole.CUSTOMER, ActorRole.PROVIDER, ActorRole.ADMIN];
+      const validRoles: ActorRole[] = [
+        ActorRole.CUSTOMER,
+        ActorRole.PROVIDER,
+        ActorRole.ADMIN,
+      ];
       if (!actorRole || !validRoles.includes(actorRole)) {
         res.status(400).json({
           success: false,
@@ -455,7 +683,8 @@ export class BookingStatusHandler {
         res.status(403).json({
           success: false,
           message: "Access denied",
-          error: "Admin privileges are required to reschedule with admin actor role",
+          error:
+            "Admin privileges are required to reschedule with admin actor role",
         });
         return;
       }
@@ -476,7 +705,13 @@ export class BookingStatusHandler {
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes("not found")) {
-          res.status(404).json({ success: false, message: "Booking not found", error: error.message });
+          res
+            .status(404)
+            .json({
+              success: false,
+              message: "Booking not found",
+              error: error.message,
+            });
           return;
         }
         if (
@@ -485,7 +720,13 @@ export class BookingStatusHandler {
           error.message.includes("not the provider") ||
           error.message.includes("must be in the future")
         ) {
-          res.status(400).json({ success: false, message: "Cannot reschedule booking", error: error.message });
+          res
+            .status(400)
+            .json({
+              success: false,
+              message: "Cannot reschedule booking",
+              error: error.message,
+            });
           return;
         }
       }

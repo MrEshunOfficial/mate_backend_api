@@ -8,27 +8,27 @@ import { requireProviderOwnership } from "../../middleware/role/ownership.middle
 
 // ─── Provider Image Routes ────────────────────────────────────────────────────
 //
-// Two distinct image types live on ProviderProfile, handled in one route file:
+// Two distinct image types live on ProviderProfile, both backed by ARRAY fields:
 //
 //   Gallery images (businessGalleryImages)
 //   ─────────────────────────────────────
 //   Publicly readable — browsing clients can view a provider's portfolio.
 //   Write operations (upload, archive, delete) require auth + ownership.
+//   Supports single and multi-file upload; all uploads accumulate in the array.
+//   Delete requires :fileId to target a specific gallery entry.
 //
 //   ID document images (idDetails.fileImageId)
 //   ──────────────────────────────────────────
 //   Fully private — only the owning provider and admins may access.
+//   Supports single and multi-file upload (e.g. front + back of ID).
+//   Delete requires :fileId to target a specific entry.
 //   Every route requires auth + ownership.
-//
-// Both types use linked upload mode — ProviderProfile must exist before files
-// are attached. The providerProfileId is always present in the URL or derived
-// from the authenticated user's context at upload time.
 
 const router = Router();
 
-const cloudinaryConfig  = initCloudinaryService();
-const cloudinaryCtrl    = new CloudinaryFileController(cloudinaryConfig);
-const mongoCtrl         = new MongoDBFileController();
+const cloudinaryConfig = initCloudinaryService();
+const cloudinaryCtrl = new CloudinaryFileController(cloudinaryConfig);
+const mongoCtrl = new MongoDBFileController();
 const { uploadMiddleware } = cloudinaryCtrl;
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -37,101 +37,120 @@ const { uploadMiddleware } = cloudinaryCtrl;
 
 // ── Cloudinary upload ────────────────────────────────────────────────────────
 
+// Single image — appends to businessGalleryImages
 router.post(
   "/cloudinary/provider-gallery",
   authenticateToken,
   uploadMiddleware.single("image"),
-  cloudinaryCtrl.uploadProviderGalleryImage
+  cloudinaryCtrl.uploadProviderGalleryImage,
+);
+
+// Multiple images — appends all to businessGalleryImages in one request
+// Field name must be "images"; client sends multipart/form-data with up to 10 files
+router.post(
+  "/cloudinary/provider-gallery-images",
+  authenticateToken,
+  uploadMiddleware.array("images", 10),
+  cloudinaryCtrl.uploadMultipleProviderGalleryImages,
 );
 
 // ── Entity-scoped Cloudinary routes ──────────────────────────────────────────
 
-// Public — no authentication required
+// Public — no authentication required; returns all active gallery images
 router.get(
   "/providers/:providerProfileId/gallery/public",
-  cloudinaryCtrl.getPublicProviderGalleryImage
+  cloudinaryCtrl.getPublicProviderGalleryImage,
 );
 
+// Returns a transformation URL for one specific gallery image
+// :fileId identifies the image; query params: width, quality, format
 router.get(
-  "/providers/:providerProfileId/gallery/optimized",
-  cloudinaryCtrl.getOptimizedProviderGalleryImage
+  "/providers/:providerProfileId/gallery/optimized/:fileId",
+  cloudinaryCtrl.getOptimizedProviderGalleryImage,
 );
 
-// Authenticated
+// Authenticated — returns all active gallery image records
 router.get(
   "/providers/:providerProfileId/gallery",
   authenticateToken,
-  cloudinaryCtrl.getProviderGalleryImage
+  cloudinaryCtrl.getProviderGalleryImage,
 );
 
+// Deletes a specific gallery image (Cloudinary asset + MongoDB record)
+// :fileId identifies which entry in businessGalleryImages to remove
 router.delete(
-  "/providers/:providerProfileId/gallery",
+  "/providers/:providerProfileId/gallery/:fileId",
   authenticateToken,
   requireProviderOwnership,
-  cloudinaryCtrl.deleteProviderGalleryImage
+  cloudinaryCtrl.deleteProviderGalleryImage,
 );
 
 // ── MongoDB record management (gallery) ──────────────────────────────────────
 
-// Public record read
+// Public record read — returns all active gallery records
 router.get(
   "/providers/:providerProfileId/gallery/record/public",
-  mongoCtrl.getPublicProviderGalleryRecord
+  mongoCtrl.getPublicProviderGalleryRecord,
 );
 
-// Authenticated record operations
+// Returns all active records and marks them accessed
 router.get(
   "/providers/:providerProfileId/gallery/record",
   authenticateToken,
-  mongoCtrl.getProviderGalleryRecord
+  mongoCtrl.getProviderGalleryRecord,
 );
 
+// Returns active list + paginated archived records
 router.get(
   "/providers/:providerProfileId/gallery/history",
   authenticateToken,
-  mongoCtrl.getProviderGalleryHistory
+  mongoCtrl.getProviderGalleryHistory,
 );
 
+// Updates description/tags on one specific gallery record
 router.patch(
-  "/providers/:providerProfileId/gallery/metadata",
+  "/providers/:providerProfileId/gallery/metadata/:fileId",
   authenticateToken,
   requireProviderOwnership,
-  mongoCtrl.updateProviderGalleryMetadata
+  mongoCtrl.updateProviderGalleryMetadata,
 );
 
+// Soft-archives one specific gallery record (pulls it from businessGalleryImages)
 router.post(
-  "/providers/:providerProfileId/gallery/archive",
+  "/providers/:providerProfileId/gallery/archive/:fileId",
   authenticateToken,
   requireProviderOwnership,
-  mongoCtrl.archiveProviderGallery
+  mongoCtrl.archiveProviderGallery,
 );
 
+// Restores one archived gallery record (re-adds it to businessGalleryImages)
 router.post(
   "/providers/:providerProfileId/gallery/restore/:fileId",
   authenticateToken,
   requireProviderOwnership,
-  mongoCtrl.restoreProviderGallery
+  mongoCtrl.restoreProviderGallery,
 );
 
+// Hard-deletes one specific gallery record only (Cloudinary asset untouched)
 router.delete(
-  "/providers/:providerProfileId/gallery/db",
+  "/providers/:providerProfileId/gallery/db/:fileId",
   authenticateToken,
   requireProviderOwnership,
-  mongoCtrl.deleteProviderGallery
+  mongoCtrl.deleteProviderGallery,
 );
 
 router.get(
   "/providers/:providerProfileId/gallery/stats",
   authenticateToken,
   requireProviderOwnership,
-  mongoCtrl.getProviderGalleryStats
+  mongoCtrl.getProviderGalleryStats,
 );
 
 router.delete(
   "/providers/:providerProfileId/gallery/cleanup",
   authenticateToken,
   requireProviderOwnership,
-  mongoCtrl.cleanupArchivedProviderGallery
+  mongoCtrl.cleanupArchivedProviderGallery,
 );
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -140,86 +159,104 @@ router.delete(
 
 // ── Cloudinary upload ────────────────────────────────────────────────────────
 
+// Single image — appends to idDetails.fileImageId
 router.post(
   "/cloudinary/provider-id-image",
   authenticateToken,
   uploadMiddleware.single("image"),
-  cloudinaryCtrl.uploadProviderIdImage
+  cloudinaryCtrl.uploadProviderIdImage,
+);
+
+// Multiple images — appends all to idDetails.fileImageId in one request
+// Field name must be "images"; client sends multipart/form-data with up to 5 files
+router.post(
+  "/cloudinary/provider-id-images",
+  authenticateToken,
+  uploadMiddleware.array("images", 5),
+  cloudinaryCtrl.uploadMultipleProviderIdImages,
 );
 
 // ── Entity-scoped Cloudinary routes ──────────────────────────────────────────
 
+// Returns all active ID image records
 router.get(
   "/providers/:providerProfileId/id-image",
   authenticateToken,
   requireProviderOwnership,
-  cloudinaryCtrl.getProviderIdImage
+  cloudinaryCtrl.getProviderIdImage,
 );
 
+// Deletes a specific ID image (Cloudinary asset + MongoDB record)
+// :fileId identifies which entry in idDetails.fileImageId to remove
 router.delete(
-  "/providers/:providerProfileId/id-image",
+  "/providers/:providerProfileId/id-image/:fileId",
   authenticateToken,
   requireProviderOwnership,
-  cloudinaryCtrl.deleteProviderIdImage
+  cloudinaryCtrl.deleteProviderIdImage,
 );
 
 // ── MongoDB record management (ID images) ────────────────────────────────────
 
+// Returns all active ID image records and marks them accessed
 router.get(
   "/providers/:providerProfileId/id-image/record",
   authenticateToken,
   requireProviderOwnership,
-  mongoCtrl.getProviderIdImageRecord
+  mongoCtrl.getProviderIdImageRecord,
 );
 
+// Returns active list + paginated archived records
 router.get(
   "/providers/:providerProfileId/id-image/history",
   authenticateToken,
   requireProviderOwnership,
-  mongoCtrl.getProviderIdImageHistory
+  mongoCtrl.getProviderIdImageHistory,
 );
 
+// Updates description/tags on one specific ID image record
 router.patch(
-  "/providers/:providerProfileId/id-image/metadata",
+  "/providers/:providerProfileId/id-image/metadata/:fileId",
   authenticateToken,
   requireProviderOwnership,
-  mongoCtrl.updateProviderIdImageMetadata
+  mongoCtrl.updateProviderIdImageMetadata,
 );
 
+// Soft-archives one specific ID image record (pulls it from idDetails.fileImageId)
 router.post(
-  "/providers/:providerProfileId/id-image/archive",
+  "/providers/:providerProfileId/id-image/archive/:fileId",
   authenticateToken,
   requireProviderOwnership,
-  mongoCtrl.archiveProviderIdImage
+  mongoCtrl.archiveProviderIdImage,
 );
 
+// Restores one archived ID image record (re-adds it to idDetails.fileImageId)
 router.post(
   "/providers/:providerProfileId/id-image/restore/:fileId",
   authenticateToken,
   requireProviderOwnership,
-  mongoCtrl.restoreProviderIdImage
+  mongoCtrl.restoreProviderIdImage,
 );
 
+// Hard-deletes one specific ID image record only (Cloudinary asset untouched)
 router.delete(
-  "/providers/:providerProfileId/id-image/db",
+  "/providers/:providerProfileId/id-image/db/:fileId",
   authenticateToken,
   requireProviderOwnership,
-  mongoCtrl.deleteProviderIdImage
+  mongoCtrl.deleteProviderIdImage,
 );
 
 router.get(
   "/providers/:providerProfileId/id-image/stats",
   authenticateToken,
   requireProviderOwnership,
-  mongoCtrl.getProviderIdImageStats
+  mongoCtrl.getProviderIdImageStats,
 );
 
 router.delete(
   "/providers/:providerProfileId/id-image/cleanup",
   authenticateToken,
   requireProviderOwnership,
-  mongoCtrl.cleanupArchivedProviderIdImages
+  mongoCtrl.cleanupArchivedProviderIdImages,
 );
 
 export default router;
-

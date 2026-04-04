@@ -5,8 +5,40 @@ import {
   requireVerification,
   requireAdmin,
 } from "../../middleware/auth/auth.middleware";
-import { getMyClientProfile, getClientProfileById, getProfileReadyStatus, updateClientProfile, updatePersonalInfo, updatePreferences, getDefaultAddress, setDefaultAddress, addSavedAddress, updateSavedAddress, removeSavedAddress, getProvidersNearClient, getFavoriteServices, addFavoriteService, removeFavoriteService, getFavoriteProviders, addFavoriteProvider, removeFavoriteProvider, getBookingHistory, getTaskHistory, getActivitySummary, deleteClientProfile, restoreClientProfile, getAllClients, getClientStats, getClientProfileByRefAdmin, verifyClient, adminDeleteClient, adminRestoreClient } from "../../controllers/profiles/client/client.profile.controller";
-import { updateContactInfo, updateIdImages, removeIdImage } from "../../controllers/profiles/provider/provider.profile.controller";
+import {
+  getMyClientProfile,
+  getClientProfileById,
+  getProfileReadyStatus,
+  updateClientProfile,
+  updatePersonalInfo,
+  updatePreferences,
+  getDefaultAddress,
+  setDefaultAddress,
+  addSavedAddress,
+  updateSavedAddress,
+  removeSavedAddress,
+  getProvidersNearClient,
+  getFavoriteServices,
+  addFavoriteService,
+  removeFavoriteService,
+  getFavoriteProviders,
+  addFavoriteProvider,
+  removeFavoriteProvider,
+  getBookingHistory,
+  getTaskHistory,
+  getActivitySummary,
+  deleteClientProfile,
+  restoreClientProfile,
+  getAllClients,
+  getClientStats,
+  getClientProfileByRefAdmin,
+  verifyClient,
+  adminDeleteClient,
+  adminRestoreClient,
+  updateContactInfo,
+  updateIdImages,
+  removeIdImage,
+} from "../../controllers/profiles/client/client.profile.controller";
 import { requireClientOwnership } from "../../middleware/role/ownership.middleware";
 import { requireCustomer } from "../../middleware/role/role.middleware";
 
@@ -103,11 +135,7 @@ router.delete("/:profileId/id-images/:fileId", ...clientOwner, removeIdImage);
  * Returns the client's current default saved address (or null if none set).
  * Declared before /:addressId to prevent collision.
  */
-router.get(
-  "/:profileId/addresses/default",
-  ...clientOwner,
-  getDefaultAddress
-);
+router.get("/:profileId/addresses/default", ...clientOwner, getDefaultAddress);
 
 /**
  * PUT /clients/:profileId/addresses/default
@@ -115,11 +143,7 @@ router.get(
  * Body: { index: number }
  * Declared before /:addressId to prevent collision.
  */
-router.put(
-  "/:profileId/addresses/default",
-  ...clientOwner,
-  setDefaultAddress
-);
+router.put("/:profileId/addresses/default", ...clientOwner, setDefaultAddress);
 
 /**
  * POST /clients/:profileId/addresses
@@ -135,7 +159,7 @@ router.post("/:profileId/addresses", ...clientOwner, addSavedAddress);
 router.put(
   "/:profileId/addresses/:addressId",
   ...clientOwner,
-  updateSavedAddress
+  updateSavedAddress,
 );
 
 /**
@@ -145,7 +169,7 @@ router.put(
 router.delete(
   "/:profileId/addresses/:addressId",
   ...clientOwner,
-  removeSavedAddress
+  removeSavedAddress,
 );
 
 // ─── Nearby Provider Discovery ────────────────────────────────────────────────
@@ -160,7 +184,7 @@ router.delete(
 router.get(
   "/:profileId/nearby-providers",
   ...clientOwner,
-  getProvidersNearClient
+  getProvidersNearClient,
 );
 
 // ─── Favourites: Services ─────────────────────────────────────────────────────
@@ -172,7 +196,7 @@ router.get(
 router.get(
   "/:profileId/favorites/services",
   ...clientOwner,
-  getFavoriteServices
+  getFavoriteServices,
 );
 
 /**
@@ -182,7 +206,7 @@ router.get(
 router.post(
   "/:profileId/favorites/services/:serviceId",
   ...clientOwner,
-  addFavoriteService
+  addFavoriteService,
 );
 
 /**
@@ -192,7 +216,7 @@ router.post(
 router.delete(
   "/:profileId/favorites/services/:serviceId",
   ...clientOwner,
-  removeFavoriteService
+  removeFavoriteService,
 );
 
 // ─── Favourites: Providers ────────────────────────────────────────────────────
@@ -205,7 +229,7 @@ router.delete(
 router.get(
   "/:profileId/favorites/providers",
   ...clientOwner,
-  getFavoriteProviders
+  getFavoriteProviders,
 );
 
 /**
@@ -215,7 +239,7 @@ router.get(
 router.post(
   "/:profileId/favorites/providers/:providerProfileId",
   ...clientOwner,
-  addFavoriteProvider
+  addFavoriteProvider,
 );
 
 /**
@@ -225,7 +249,7 @@ router.post(
 router.delete(
   "/:profileId/favorites/providers/:providerProfileId",
   ...clientOwner,
-  removeFavoriteProvider
+  removeFavoriteProvider,
 );
 
 // ─── Activity History ─────────────────────────────────────────────────────────
@@ -246,11 +270,7 @@ router.get("/:profileId/tasks", ...clientOwner, getTaskHistory);
  * GET /clients/:profileId/activity-summary
  * Count summary of bookings + tasks for the dashboard header.
  */
-router.get(
-  "/:profileId/activity-summary",
-  ...clientOwner,
-  getActivitySummary
-);
+router.get("/:profileId/activity-summary", ...clientOwner, getActivitySummary);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SOFT DELETE / RESTORE — authenticated owner or admin
@@ -292,7 +312,7 @@ router.get("/admin/stats", ...adminOnly, getClientStats);
 router.get(
   "/admin/ref/:userProfileId",
   ...adminOnly,
-  getClientProfileByRefAdmin
+  getClientProfileByRefAdmin,
 );
 
 /**

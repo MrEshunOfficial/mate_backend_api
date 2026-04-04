@@ -31,7 +31,7 @@ const isAdmin = (req: AuthenticatedRequest): boolean => {
  */
 const resolveUserProfileId = async (
   req: AuthenticatedRequest,
-  res: Response
+  res: Response,
 ): Promise<Types.ObjectId | null> => {
   const userProfile = await ProfileModel.findOne({
     userId: req.user!._id,
@@ -63,10 +63,12 @@ const resolveUserProfileId = async (
  *
  * Used on all client ID image routes where :clientProfileId is in the URL.
  */
+// middleware/ownership.middleware.ts
+
 export const requireClientOwnership = async (
   req: AuthenticatedRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     if (!req.user) {
@@ -78,30 +80,30 @@ export const requireClientOwnership = async (
       return;
     }
 
-    // Admins can act on any client profile
     if (isAdmin(req)) {
       next();
       return;
     }
 
-    const clientProfileId = getParam(req.params.clientProfileId);
+    // Routes use :profileId; legacy routes may use :clientProfileId
+    const rawId = req.params.profileId ?? req.params.clientProfileId;
+    const clientProfileId = getParam(rawId);
+
     if (!clientProfileId || !Types.ObjectId.isValid(clientProfileId)) {
       res.status(400).json({
         success: false,
         message: "Invalid request",
-        error: "clientProfileId is required and must be a valid ObjectId",
+        error: "A valid client profile ID is required",
       });
       return;
     }
 
-    // Resolve the caller's IUserProfile._id
     const userProfileId = await resolveUserProfileId(req, res);
-    if (!userProfileId) return; // response already sent
+    if (!userProfileId) return;
 
-    // Confirm the ClientProfile belongs to this user's profile
     const clientProfile = await ClientProfileModel.findOne({
-      _id:      new Types.ObjectId(clientProfileId),
-      profile:  userProfileId,   // ClientProfile.profile → IUserProfile._id
+      _id: new Types.ObjectId(clientProfileId),
+      profile: userProfileId,
       isDeleted: { $ne: true },
     });
 
@@ -140,7 +142,7 @@ export const requireClientOwnership = async (
 export const requireProviderOwnership = async (
   req: AuthenticatedRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     if (!req.user) {
@@ -157,12 +159,14 @@ export const requireProviderOwnership = async (
       return;
     }
 
-    const providerProfileId = getParam(req.params.providerProfileId);
+    const rawId = req.params.profileId ?? req.params.providerProfileId;
+    const providerProfileId = getParam(rawId);
+
     if (!providerProfileId || !Types.ObjectId.isValid(providerProfileId)) {
       res.status(400).json({
         success: false,
         message: "Invalid request",
-        error: "providerProfileId is required and must be a valid ObjectId",
+        error: "A valid provider profile ID is required",
       });
       return;
     }
@@ -171,8 +175,8 @@ export const requireProviderOwnership = async (
     if (!userProfileId) return;
 
     const providerProfile = await ProviderProfileModel.findOne({
-      _id:      new Types.ObjectId(providerProfileId),
-      profile:  userProfileId,   // ProviderProfile.profile → IUserProfile._id
+      _id: new Types.ObjectId(providerProfileId),
+      profile: userProfileId,
       isDeleted: { $ne: true },
     });
 
@@ -211,7 +215,7 @@ export const requireProviderOwnership = async (
 export const requireBookingParticipant = async (
   req: AuthenticatedRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     if (!req.user) {
@@ -243,11 +247,8 @@ export const requireBookingParticipant = async (
 
     // The caller is a participant if their profile is either clientId or providerId
     const booking = await BookingModel.findOne({
-      _id:       new Types.ObjectId(bookingId),
-      $or: [
-        { clientId:   userProfileId },
-        { providerId: userProfileId },
-      ],
+      _id: new Types.ObjectId(bookingId),
+      $or: [{ clientId: userProfileId }, { providerId: userProfileId }],
       isDeleted: { $ne: true },
     });
 
@@ -290,7 +291,7 @@ export const requireBookingParticipant = async (
 export const requireTaskOwner = async (
   req: AuthenticatedRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     if (!req.user) {
@@ -321,8 +322,8 @@ export const requireTaskOwner = async (
     if (!userProfileId) return;
 
     const task = await TaskModel.findOne({
-      _id:       new Types.ObjectId(taskId),
-      clientId:  userProfileId,   // Task.clientId → IUserProfile._id
+      _id: new Types.ObjectId(taskId),
+      clientId: userProfileId, // Task.clientId → IUserProfile._id
       isDeleted: { $ne: true },
     });
 

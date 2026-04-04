@@ -1,8 +1,33 @@
 import { Router } from "express";
-import { browseServices, expandSearch, createServiceRequest, getServiceRequestsByClient, getClientActivitySummary, getServiceRequestsByProvider, getPendingRequestsForProvider, getProviderActivitySummary, getServiceRequestById, deleteServiceRequest, cancelServiceRequest, rejectServiceRequest, getAllServiceRequests, getServiceRequestStats, expireOverdueServiceRequests, restoreServiceRequest } from "../../controllers/service-request/service-request.controller";
-import { authenticateToken, requireVerification, requireAdmin } from "../../middleware/auth/auth.middleware";
-import { requireCustomerOrProvider, requireCustomer, requireProvider } from "../../middleware/role/role.middleware";
-
+import {
+  browseServices,
+  expandSearch,
+  createServiceRequest,
+  getServiceRequestsByClient,
+  getClientActivitySummary,
+  getServiceRequestsByProvider,
+  getPendingRequestsForProvider,
+  getProviderActivitySummary,
+  getServiceRequestById,
+  deleteServiceRequest,
+  cancelServiceRequest,
+  rejectServiceRequest,
+  getAllServiceRequests,
+  getServiceRequestStats,
+  expireOverdueServiceRequests,
+  restoreServiceRequest,
+  acceptServiceRequest,
+} from "../../controllers/service-request/service-request.controller";
+import {
+  authenticateToken,
+  requireVerification,
+  requireAdmin,
+} from "../../middleware/auth/auth.middleware";
+import {
+  requireCustomerOrProvider,
+  requireCustomer,
+  requireProvider,
+} from "../../middleware/role/role.middleware";
 
 const router = Router();
 
@@ -52,7 +77,7 @@ router.post("/", requireCustomer, createServiceRequest);
  */
 router.get(
   "/client/:clientProfileId",
-  requireCustomerOrProvider,   // owner check is enforced inside the handler via profile resolution
+  requireCustomerOrProvider, // owner check is enforced inside the handler via profile resolution
   getServiceRequestsByClient,
 );
 
@@ -93,6 +118,92 @@ router.get(
   requireProvider,
   getPendingRequestsForProvider,
 );
+
+// ─── All routes require authentication + verified email ───────────────────────
+router.use(authenticateToken, requireVerification);
+
+// ─── Browse / Discovery ───────────────────────────────────────────────────────
+
+router.post("/browse", requireCustomerOrProvider, browseServices);
+router.post("/browse/expand", requireCustomerOrProvider, expandSearch);
+
+// ─── Create ───────────────────────────────────────────────────────────────────
+
+router.post("/", requireCustomer, createServiceRequest);
+
+// ─── Client Routes ────────────────────────────────────────────────────────────
+
+router.get(
+  "/client/:clientProfileId",
+  requireCustomerOrProvider,
+  getServiceRequestsByClient,
+);
+
+router.get(
+  "/client/:clientProfileId/activity",
+  requireCustomerOrProvider,
+  getClientActivitySummary,
+);
+
+// ─── Provider Routes ──────────────────────────────────────────────────────────
+
+router.get(
+  "/provider/:providerProfileId",
+  requireProvider,
+  getServiceRequestsByProvider,
+);
+
+router.get(
+  "/provider/:providerProfileId/pending",
+  requireProvider,
+  getPendingRequestsForProvider,
+);
+
+router.get(
+  "/provider/:providerProfileId/activity",
+  requireProvider,
+  getProviderActivitySummary,
+);
+
+// ─── Single Resource Routes ───────────────────────────────────────────────────
+
+router.get(
+  "/:serviceRequestId",
+  requireCustomerOrProvider,
+  getServiceRequestById,
+);
+
+router.delete(
+  "/:serviceRequestId",
+  requireCustomerOrProvider,
+  deleteServiceRequest,
+);
+
+/**
+ * POST /api/service-requests/:serviceRequestId/accept
+ * Body: { message? }
+ *
+ * Provider accepts a PENDING service request directed at them.
+ * Internally delegates to BookingService.createBookingFromServiceRequest,
+ * which atomically creates the Booking and transitions the ServiceRequest
+ * to ACCEPTED. Returns both documents so the client can redirect immediately.
+ *
+ * Must be registered BEFORE /:serviceRequestId/restore and similar catch-all
+ * param routes to avoid Express matching "accept" as a serviceRequestId.
+ */
+router.post("/:serviceRequestId/accept", requireProvider, acceptServiceRequest);
+
+router.post("/:serviceRequestId/cancel", requireCustomer, cancelServiceRequest);
+
+router.post("/:serviceRequestId/reject", requireProvider, rejectServiceRequest);
+
+// ─── Admin Routes ─────────────────────────────────────────────────────────────
+
+router.get("/admin/all", requireAdmin, getAllServiceRequests);
+router.get("/admin/stats", requireAdmin, getServiceRequestStats);
+router.post("/admin/expire", requireAdmin, expireOverdueServiceRequests);
+
+router.post("/:serviceRequestId/restore", requireAdmin, restoreServiceRequest);
 
 /**
  * GET /api/service-requests/provider/:providerProfileId/activity
@@ -141,11 +252,7 @@ router.delete(
  * Client withdraws a PENDING service request.
  * Only valid before the provider responds.
  */
-router.post(
-  "/:serviceRequestId/cancel",
-  requireCustomer,
-  cancelServiceRequest,
-);
+router.post("/:serviceRequestId/cancel", requireCustomer, cancelServiceRequest);
 
 /**
  * POST /api/service-requests/:serviceRequestId/reject
@@ -158,11 +265,7 @@ router.post(
  * Use POST /api/bookings/from-service-request/:serviceRequestId to accept
  * a request — that endpoint atomically creates the Booking.
  */
-router.post(
-  "/:serviceRequestId/reject",
-  requireProvider,
-  rejectServiceRequest,
-);
+router.post("/:serviceRequestId/reject", requireProvider, rejectServiceRequest);
 
 // ─── Admin Routes ─────────────────────────────────────────────────────────────
 

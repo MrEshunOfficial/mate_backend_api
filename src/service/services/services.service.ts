@@ -5,7 +5,12 @@ import { FileEntityType } from "../../types/file.types";
 import FileModel from "../../models/fileModel";
 import { ServiceModel } from "../../models/service/serviceModel";
 import ProviderProfileModel from "../../models/profiles/provider.profile.model";
-import { ServicePricing, PricingModel, Service, ServiceDocument } from "../../types/services.types";
+import {
+  ServicePricing,
+  PricingModel,
+  Service,
+  ServiceDocument,
+} from "../../types/services.types";
 import { serviceCoverConfig } from "../../controllers/files/config/serviceCover.config";
 
 // ─── Auto-Activation ──────────────────────────────────────────────────────────
@@ -46,17 +51,31 @@ function meetsAutoActivationCriteria(service: Partial<Service>): boolean {
  *  - commissionRateSnapshot must be between 0 and 1
  */
 function validatePricing(pricing: Partial<ServicePricing>): void {
-  const { pricingModel, basePrice, tiers, minimumPrice, discount, taxRate, commissionRateSnapshot } = pricing;
+  const {
+    pricingModel,
+    basePrice,
+    tiers,
+    minimumPrice,
+    discount,
+    taxRate,
+    commissionRateSnapshot,
+  } = pricing;
 
   if (!pricingModel) {
     throw new Error("Pricing model is required");
   }
 
-  const modelsRequiringBasePrice: PricingModel[] = ["fixed", "hourly", "per_unit"];
+  const modelsRequiringBasePrice: PricingModel[] = [
+    "fixed",
+    "hourly",
+    "per_unit",
+  ];
 
   if (modelsRequiringBasePrice.includes(pricingModel)) {
     if (basePrice == null) {
-      throw new Error(`basePrice is required for pricing model "${pricingModel}"`);
+      throw new Error(
+        `basePrice is required for pricing model "${pricingModel}"`,
+      );
     }
     if (basePrice < 0) {
       throw new Error("basePrice must be a non-negative number");
@@ -85,7 +104,7 @@ function validatePricing(pricing: Partial<ServicePricing>): void {
   }
 
   if (discount) {
-    const hasRate   = discount.rate   != null;
+    const hasRate = discount.rate != null;
     const hasAmount = discount.amount != null;
     if (hasRate && hasAmount) {
       throw new Error("Discount must specify either rate or amount, not both");
@@ -108,7 +127,10 @@ function validatePricing(pricing: Partial<ServicePricing>): void {
     throw new Error("taxRate must be between 0 and 1");
   }
 
-  if (commissionRateSnapshot != null && (commissionRateSnapshot < 0 || commissionRateSnapshot > 1)) {
+  if (
+    commissionRateSnapshot != null &&
+    (commissionRateSnapshot < 0 || commissionRateSnapshot > 1)
+  ) {
     throw new Error("commissionRateSnapshot must be between 0 and 1");
   }
 }
@@ -161,15 +183,16 @@ export class ServiceService {
    */
   async createService(
     serviceData: Partial<Service>,
-    submittedBy: string
+    submittedBy: string,
   ): Promise<Service> {
     try {
-      const { title, slug, categoryId, providerId, servicePricing } = serviceData;
+      const { title, slug, categoryId, providerId, servicePricing } =
+        serviceData;
 
       // 1. Required field guards
       if (!title?.trim()) throw new Error("Service title is required");
-      if (!categoryId)    throw new Error("Category is required");
-      if (!providerId)    throw new Error("Provider is required");
+      if (!categoryId) throw new Error("Category is required");
+      if (!providerId) throw new Error("Provider is required");
 
       const trimmedTitle = title.trim();
 
@@ -182,7 +205,7 @@ export class ServiceService {
 
       if (existingByTitle) {
         throw new Error(
-          `You already have a service named "${trimmedTitle}". Please choose a different title.`
+          `You already have a service named "${trimmedTitle}". Please choose a different title.`,
         );
       }
 
@@ -195,7 +218,9 @@ export class ServiceService {
         });
 
         if (existingBySlug) {
-          throw new Error(`A service with slug "${trimmedSlug}" already exists`);
+          throw new Error(
+            `A service with slug "${trimmedSlug}" already exists`,
+          );
         }
       }
 
@@ -222,7 +247,7 @@ export class ServiceService {
         title: trimmedTitle,
         slug: slug?.trim().toLowerCase(),
         submittedBy: new Types.ObjectId(submittedBy),
-        isActive: false,   // always starts inactive — activation happens via scheduler
+        isActive: false, // always starts inactive — activation happens via scheduler
         isDeleted: false,
         scheduledActivationAt,
       });
@@ -233,7 +258,7 @@ export class ServiceService {
       //    circular dependency with ProviderProfileService.
       await ProviderProfileModel.findOneAndUpdate(
         { _id: new Types.ObjectId(providerId.toString()), isDeleted: false },
-        { $addToSet: { serviceOfferings: service._id } }
+        { $addToSet: { serviceOfferings: service._id } },
       );
 
       // 8. Link the cover image
@@ -245,7 +270,7 @@ export class ServiceService {
           new Types.ObjectId(coverId.toString()),
           serviceId,
           submittedBy,
-          this.fileService
+          this.fileService,
         );
       } else {
         // Case B: search for an orphaned cover uploaded by this user
@@ -262,7 +287,7 @@ export class ServiceService {
             orphanedCover._id,
             serviceId,
             submittedBy,
-            this.fileService
+            this.fileService,
           );
         }
       }
@@ -272,10 +297,13 @@ export class ServiceService {
     } catch (error) {
       if ((error as any).code === 11000) {
         const field = Object.keys((error as any).keyPattern || {})[0];
-        if (field === "slug") throw new Error("A service with this slug already exists");
+        if (field === "slug")
+          throw new Error("A service with this slug already exists");
         throw new Error("Duplicate entry detected");
       }
-      throw error instanceof Error ? error : new Error("Failed to create service");
+      throw error instanceof Error
+        ? error
+        : new Error("Failed to create service");
     }
   }
 
@@ -283,9 +311,10 @@ export class ServiceService {
 
   async getServiceById(
     serviceId: string,
-    includeDetails: boolean = false
+    includeDetails: boolean = false,
   ): Promise<Service | null> {
-    if (!Types.ObjectId.isValid(serviceId)) throw new Error("Invalid service ID");
+    if (!Types.ObjectId.isValid(serviceId))
+      throw new Error("Invalid service ID");
 
     const query = ServiceModel.findOne({
       _id: new Types.ObjectId(serviceId),
@@ -294,11 +323,11 @@ export class ServiceService {
 
     if (includeDetails) {
       query
-        .populate("categoryId",  "catName slug")
-        .populate("providerId",  "businessName locationData providerContactInfo")
-        .populate("coverImage",  "url thumbnailUrl uploadedAt")
+        .populate("categoryId", "catName slug")
+        .populate("providerId", "businessName locationData providerContactInfo")
+        .populate("coverImage", "url thumbnailUrl uploadedAt")
         .populate("submittedBy", "name email")
-        .populate("approvedBy",  "name email");
+        .populate("approvedBy", "name email");
     }
 
     return (await query.lean()) as Service | null;
@@ -306,7 +335,7 @@ export class ServiceService {
 
   async getServiceBySlug(
     slug: string,
-    includeDetails: boolean = false
+    includeDetails: boolean = true,
   ): Promise<Service | null> {
     const query = ServiceModel.findOne({
       slug: slug.toLowerCase(),
@@ -316,8 +345,21 @@ export class ServiceService {
     if (includeDetails) {
       query
         .populate("categoryId", "catName slug")
-        .populate("providerId", "businessName locationData providerContactInfo")
-        .populate("coverImage",  "url thumbnailUrl uploadedAt");
+        .populate({
+          path: "providerId",
+          select:
+            "businessName locationData providerContactInfo isAlwaysAvailable workingHours serviceOfferings requireInitialDeposit percentageDeposit",
+          populate: {
+            path: "serviceOfferings",
+            match: { isDeleted: false, isActive: true },
+            select: "title slug coverImage servicePricing isPrivate",
+            populate: {
+              path: "coverImage",
+              select: "url thumbnailUrl",
+            },
+          },
+        })
+        .populate("coverImage", "url thumbnailUrl uploadedAt");
     }
 
     return (await query.lean()) as Service | null;
@@ -325,15 +367,15 @@ export class ServiceService {
 
   async getActiveServices(
     limit: number = 50,
-    skip: number = 0
+    skip: number = 0,
   ): Promise<{ services: Service[]; total: number; hasMore: boolean }> {
     const [services, total] = await Promise.all([
       ServiceModel.findActive()
         .limit(limit)
         .skip(skip)
-        .populate("coverImage",  "url thumbnailUrl")
-        .populate("categoryId",  "catName slug")
-        .populate("providerId",  "businessName")
+        .populate("coverImage", "url thumbnailUrl")
+        .populate("categoryId", "catName slug")
+        .populate("providerId", "businessName")
         .sort({ createdAt: -1 })
         .lean(),
       ServiceModel.countDocuments({ isActive: true, isDeleted: false }),
@@ -350,9 +392,10 @@ export class ServiceService {
     providerId: string,
     includeInactive: boolean = false,
     limit: number = 50,
-    skip: number = 0
+    skip: number = 0,
   ): Promise<{ services: Service[]; total: number; hasMore: boolean }> {
-    if (!Types.ObjectId.isValid(providerId)) throw new Error("Invalid provider ID");
+    if (!Types.ObjectId.isValid(providerId))
+      throw new Error("Invalid provider ID");
 
     const query: Record<string, any> = {
       providerId: new Types.ObjectId(providerId),
@@ -381,9 +424,10 @@ export class ServiceService {
   async getServicesByCategory(
     categoryId: string,
     limit: number = 50,
-    skip: number = 0
+    skip: number = 0,
   ): Promise<{ services: Service[]; total: number; hasMore: boolean }> {
-    if (!Types.ObjectId.isValid(categoryId)) throw new Error("Invalid category ID");
+    if (!Types.ObjectId.isValid(categoryId))
+      throw new Error("Invalid category ID");
 
     const [services, total] = await Promise.all([
       ServiceModel.findByCategory(categoryId)
@@ -418,11 +462,14 @@ export class ServiceService {
       currency?: string;
     },
     limit: number = 20,
-    skip: number = 0
+    skip: number = 0,
   ): Promise<{ services: Service[]; total: number; hasMore: boolean }> {
     if (!searchTerm?.trim()) throw new Error("Search term is required");
 
-    const results = await ServiceModel.searchServices(searchTerm.trim(), filters)
+    const results = await ServiceModel.searchServices(
+      searchTerm.trim(),
+      filters,
+    )
       .limit(limit)
       .skip(skip)
       .populate("coverImage", "url thumbnailUrl")
@@ -442,9 +489,11 @@ export class ServiceService {
   async getAllServices(
     limit: number = 50,
     skip: number = 0,
-    includeDeleted: boolean = false
+    includeDeleted: boolean = false,
   ): Promise<{ services: Service[]; total: number; hasMore: boolean }> {
-    const query: Record<string, any> = includeDeleted ? {} : { isDeleted: false };
+    const query: Record<string, any> = includeDeleted
+      ? {}
+      : { isDeleted: false };
 
     const [services, total] = await Promise.all([
       ServiceModel.find(query)
@@ -454,7 +503,7 @@ export class ServiceService {
         .populate("categoryId", "catName slug")
         .populate("providerId", "businessName")
         .populate("submittedBy", "name email")
-        .populate("approvedBy",  "name email")
+        .populate("approvedBy", "name email")
         .sort({ createdAt: -1 })
         .lean(),
       ServiceModel.countDocuments(query),
@@ -476,24 +525,24 @@ export class ServiceService {
    */
   async getPendingServices(
     limit: number = 50,
-    skip: number = 0
+    skip: number = 0,
   ): Promise<{ services: Service[]; total: number; hasMore: boolean }> {
     const query = {
-      approvedAt:  { $exists: false },
-      rejectedAt:  { $exists: false },
+      approvedAt: { $exists: false },
+      rejectedAt: { $exists: false },
       submittedBy: { $exists: true },
-      isDeleted:   false,
+      isDeleted: false,
     };
 
     const [services, total] = await Promise.all([
       ServiceModel.find(query)
         .limit(limit)
         .skip(skip)
-        .populate("categoryId",  "catName slug")
-        .populate("providerId",  "businessName providerContactInfo")
-        .populate("coverImage",  "url thumbnailUrl")
+        .populate("categoryId", "catName slug")
+        .populate("providerId", "businessName providerContactInfo")
+        .populate("coverImage", "url thumbnailUrl")
         .populate("submittedBy", "name email")
-        .sort({ createdAt: 1 })  // oldest first — review in submission order
+        .sort({ createdAt: 1 }) // oldest first — review in submission order
         .lean(),
       ServiceModel.countDocuments(query),
     ]);
@@ -536,9 +585,10 @@ export class ServiceService {
   async updateService(
     serviceId: string,
     updates: Partial<Service>,
-    updatedBy: string
+    updatedBy: string,
   ): Promise<Service | null> {
-    if (!Types.ObjectId.isValid(serviceId)) throw new Error("Invalid service ID");
+    if (!Types.ObjectId.isValid(serviceId))
+      throw new Error("Invalid service ID");
 
     const existing = await ServiceModel.findOne({
       _id: new Types.ObjectId(serviceId),
@@ -555,7 +605,8 @@ export class ServiceService {
         _id: { $ne: new Types.ObjectId(serviceId) },
         isDeleted: false,
       });
-      if (conflict) throw new Error(`A service with slug "${trimmedSlug}" already exists`);
+      if (conflict)
+        throw new Error(`A service with slug "${trimmedSlug}" already exists`);
       updates.slug = trimmedSlug;
     }
 
@@ -570,7 +621,7 @@ export class ServiceService {
       });
       if (titleConflict) {
         throw new Error(
-          `You already have a service named "${trimmedTitle}". Please choose a different title.`
+          `You already have a service named "${trimmedTitle}". Please choose a different title.`,
         );
       }
       updates.title = trimmedTitle;
@@ -600,7 +651,7 @@ export class ServiceService {
     // against what the service will look like after the write.
     const pricingAfterUpdate =
       "servicePricing" in updates
-        ? updates.servicePricing   // may be null/undefined if caller is clearing it
+        ? updates.servicePricing // may be null/undefined if caller is clearing it
         : existing.servicePricing;
 
     const mergedForCriteriaCheck: Partial<Service> = {
@@ -638,7 +689,7 @@ export class ServiceService {
           ? { scheduledActivationAt }
           : {}),
       },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     ).lean();
 
     if (!updated) throw new Error("Service not found");
@@ -649,7 +700,7 @@ export class ServiceService {
         new Types.ObjectId(coverId.toString()),
         serviceId,
         updatedBy,
-        this.fileService
+        this.fileService,
       );
       return (await ServiceModel.findById(serviceId).lean()) as Service | null;
     }
@@ -684,12 +735,12 @@ export class ServiceService {
     // Candidates: scheduled, not yet active, not deleted, not manually rejected
     const candidates = (await ServiceModel.find({
       scheduledActivationAt: { $lte: now },
-      isActive:   false,
-      isDeleted:  false,
+      isActive: false,
+      isDeleted: false,
       rejectedAt: { $exists: false },
     }).select("_id servicePricing rejectedAt")) as ServiceDocument[];
 
-    let activated       = 0;
+    let activated = 0;
     let skippedRejected = 0;
     const errors: Array<{ serviceId: string; error: string }> = [];
 
@@ -706,9 +757,13 @@ export class ServiceService {
 
       try {
         await ServiceModel.findByIdAndUpdate(candidate._id, {
-          isActive:             true,
-          approvedAt:           now,
-          $unset: { scheduledActivationAt: 1, rejectedAt: 1, rejectionReason: 1 },
+          isActive: true,
+          approvedAt: now,
+          $unset: {
+            scheduledActivationAt: 1,
+            rejectedAt: 1,
+            rejectionReason: 1,
+          },
         });
         activated++;
       } catch (err) {
@@ -727,7 +782,9 @@ export class ServiceService {
    * Called internally by rejectService and deleteService to ensure a
    * rejected/deleted service never fires its scheduled activation.
    */
-  private async cancelScheduledActivation(serviceId: Types.ObjectId): Promise<void> {
+  private async cancelScheduledActivation(
+    serviceId: Types.ObjectId,
+  ): Promise<void> {
     await ServiceModel.findByIdAndUpdate(serviceId, {
       $unset: { scheduledActivationAt: 1 },
     });
@@ -743,7 +800,8 @@ export class ServiceService {
     minutesRemaining?: number;
     meetsActivationCriteria: boolean;
   }> {
-    if (!Types.ObjectId.isValid(serviceId)) throw new Error("Invalid service ID");
+    if (!Types.ObjectId.isValid(serviceId))
+      throw new Error("Invalid service ID");
 
     const service = await ServiceModel.findOne({
       _id: new Types.ObjectId(serviceId),
@@ -752,15 +810,15 @@ export class ServiceService {
 
     if (!service) throw new Error("Service not found");
 
-    const isScheduled   = !!service.scheduledActivationAt;
-    const criteriaMet   = meetsAutoActivationCriteria(service);
+    const isScheduled = !!service.scheduledActivationAt;
+    const criteriaMet = meetsAutoActivationCriteria(service);
     const minutesRemaining =
       isScheduled && service.scheduledActivationAt
         ? Math.max(
             0,
             Math.ceil(
-              (service.scheduledActivationAt.getTime() - Date.now()) / 60_000
-            )
+              (service.scheduledActivationAt.getTime() - Date.now()) / 60_000,
+            ),
           )
         : undefined;
 
@@ -776,10 +834,12 @@ export class ServiceService {
 
   async approveService(
     serviceId: string,
-    approverId: string
+    approverId: string,
   ): Promise<Service | null> {
-    if (!Types.ObjectId.isValid(serviceId)) throw new Error("Invalid service ID");
-    if (!Types.ObjectId.isValid(approverId)) throw new Error("Invalid approver ID");
+    if (!Types.ObjectId.isValid(serviceId))
+      throw new Error("Invalid service ID");
+    if (!Types.ObjectId.isValid(approverId))
+      throw new Error("Invalid approver ID");
 
     const service = (await ServiceModel.findOne({
       _id: new Types.ObjectId(serviceId),
@@ -790,7 +850,7 @@ export class ServiceService {
 
     if (!service.servicePricing) {
       throw new Error(
-        "Cannot approve a service without pricing. Ask the provider to add pricing first."
+        "Cannot approve a service without pricing. Ask the provider to add pricing first.",
       );
     }
 
@@ -804,10 +864,12 @@ export class ServiceService {
   async rejectService(
     serviceId: string,
     approverId: string,
-    reason: string
+    reason: string,
   ): Promise<Service | null> {
-    if (!Types.ObjectId.isValid(serviceId)) throw new Error("Invalid service ID");
-    if (!Types.ObjectId.isValid(approverId)) throw new Error("Invalid approver ID");
+    if (!Types.ObjectId.isValid(serviceId))
+      throw new Error("Invalid service ID");
+    if (!Types.ObjectId.isValid(approverId))
+      throw new Error("Invalid approver ID");
     if (!reason?.trim()) throw new Error("Rejection reason is required");
 
     const service = (await ServiceModel.findOne({
@@ -828,9 +890,10 @@ export class ServiceService {
 
   async togglePrivateStatus(
     serviceId: string,
-    updatedBy: string
+    updatedBy: string,
   ): Promise<Service | null> {
-    if (!Types.ObjectId.isValid(serviceId)) throw new Error("Invalid service ID");
+    if (!Types.ObjectId.isValid(serviceId))
+      throw new Error("Invalid service ID");
 
     const service = await ServiceModel.findOne({
       _id: new Types.ObjectId(serviceId),
@@ -854,11 +917,9 @@ export class ServiceService {
    * owning ProviderProfile.serviceOfferings array so the provider's profile
    * stays in sync. The service document is retained in full for audit purposes.
    */
-  async deleteService(
-    serviceId: string,
-    deletedBy?: string
-  ): Promise<boolean> {
-    if (!Types.ObjectId.isValid(serviceId)) throw new Error("Invalid service ID");
+  async deleteService(serviceId: string, deletedBy?: string): Promise<boolean> {
+    if (!Types.ObjectId.isValid(serviceId))
+      throw new Error("Invalid service ID");
 
     const service = (await ServiceModel.findOne({
       _id: new Types.ObjectId(serviceId),
@@ -870,14 +931,14 @@ export class ServiceService {
     // Cancel any pending auto-activation — a deleted service must never go live
     await this.cancelScheduledActivation(service._id);
     await service.softDelete(
-      deletedBy ? new Types.ObjectId(deletedBy) : undefined
+      deletedBy ? new Types.ObjectId(deletedBy) : undefined,
     );
 
     // Keep ProviderProfile.serviceOfferings in sync
     if (service.providerId) {
       await ProviderProfileModel.findOneAndUpdate(
         { _id: service.providerId, isDeleted: false },
-        { $pull: { serviceOfferings: service._id } }
+        { $pull: { serviceOfferings: service._id } },
       );
     }
 
@@ -892,7 +953,8 @@ export class ServiceService {
    * criteria, a fresh 1-hour activation window is scheduled.
    */
   async restoreService(serviceId: string): Promise<Service | null> {
-    if (!Types.ObjectId.isValid(serviceId)) throw new Error("Invalid service ID");
+    if (!Types.ObjectId.isValid(serviceId))
+      throw new Error("Invalid service ID");
 
     const service = (await ServiceModel.findOne({
       _id: new Types.ObjectId(serviceId),
@@ -903,13 +965,13 @@ export class ServiceService {
 
     // A restored service re-enters the pending queue.
     // If it still meets criteria, schedule a fresh activation window.
-    service.isActive   = false;
+    service.isActive = false;
     service.approvedAt = undefined;
     service.approvedBy = undefined;
 
     if (meetsAutoActivationCriteria(service)) {
       (service as any).scheduledActivationAt = new Date(
-        Date.now() + AUTO_ACTIVATION_DELAY_MS
+        Date.now() + AUTO_ACTIVATION_DELAY_MS,
       );
     }
 
@@ -919,7 +981,7 @@ export class ServiceService {
     if (service.providerId) {
       await ProviderProfileModel.findOneAndUpdate(
         { _id: service.providerId, isDeleted: false },
-        { $addToSet: { serviceOfferings: service._id } }
+        { $addToSet: { serviceOfferings: service._id } },
       );
     }
 
@@ -927,7 +989,8 @@ export class ServiceService {
   }
 
   async permanentlyDeleteService(serviceId: string): Promise<boolean> {
-    if (!Types.ObjectId.isValid(serviceId)) throw new Error("Invalid service ID");
+    if (!Types.ObjectId.isValid(serviceId))
+      throw new Error("Invalid service ID");
 
     const service = await ServiceModel.findById(serviceId);
     if (!service) throw new Error("Service not found");
@@ -937,7 +1000,7 @@ export class ServiceService {
       await ProviderProfileModel.findOneAndUpdate(
         { _id: service.providerId },
         { $pull: { serviceOfferings: service._id } },
-        { includeSoftDeleted: true } as any
+        { includeSoftDeleted: true } as any,
       );
     }
 
@@ -950,15 +1013,16 @@ export class ServiceService {
   async updateCoverImageId(
     serviceId: string,
     coverImageId: Types.ObjectId | null,
-    updatedBy?: string
+    updatedBy?: string,
   ): Promise<Service | null> {
-    if (!Types.ObjectId.isValid(serviceId)) throw new Error("Invalid service ID");
+    if (!Types.ObjectId.isValid(serviceId))
+      throw new Error("Invalid service ID");
 
     if (coverImageId === null) {
       const service = await ServiceModel.findOneAndUpdate(
         { _id: new Types.ObjectId(serviceId), isDeleted: false },
         { $unset: { coverImage: 1 } },
-        { new: true }
+        { new: true },
       ).lean();
 
       return service as Service | null;
@@ -974,7 +1038,7 @@ export class ServiceService {
       coverImageId,
       serviceId,
       updatedBy ?? "",
-      this.fileService
+      this.fileService,
     );
 
     if (!linked) throw new Error("Failed to link cover image");
@@ -1015,12 +1079,20 @@ export class ServiceService {
       servicesWithCover,
     ] = await Promise.all([
       ServiceModel.countDocuments({ ...baseQuery, isDeleted: false }),
-      ServiceModel.countDocuments({ ...baseQuery, isDeleted: false, isActive: true }),
-      ServiceModel.countDocuments({ ...baseQuery, isDeleted: false, isActive: false }),
+      ServiceModel.countDocuments({
+        ...baseQuery,
+        isDeleted: false,
+        isActive: true,
+      }),
+      ServiceModel.countDocuments({
+        ...baseQuery,
+        isDeleted: false,
+        isActive: false,
+      }),
       ServiceModel.countDocuments({ ...baseQuery, isDeleted: true }),
       ServiceModel.countDocuments({
         ...baseQuery,
-        isDeleted:  false,
+        isDeleted: false,
         approvedAt: { $exists: false },
         rejectedAt: { $exists: false },
         submittedBy: { $exists: true },
@@ -1028,23 +1100,27 @@ export class ServiceService {
       // Services in the auto-activation queue (scheduled, not yet fired)
       ServiceModel.countDocuments({
         ...baseQuery,
-        isDeleted:              false,
-        isActive:               false,
-        rejectedAt:             { $exists: false },
-        scheduledActivationAt:  { $exists: true, $gt: new Date() },
+        isDeleted: false,
+        isActive: false,
+        rejectedAt: { $exists: false },
+        scheduledActivationAt: { $exists: true, $gt: new Date() },
       }),
       ServiceModel.countDocuments({
         ...baseQuery,
-        isDeleted:  false,
+        isDeleted: false,
         approvedAt: { $exists: true },
         rejectedAt: { $exists: false },
       }),
       ServiceModel.countDocuments({
         ...baseQuery,
-        isDeleted:  false,
+        isDeleted: false,
         rejectedAt: { $exists: true },
       }),
-      ServiceModel.countDocuments({ ...baseQuery, isDeleted: false, isPrivate: true }),
+      ServiceModel.countDocuments({
+        ...baseQuery,
+        isDeleted: false,
+        isPrivate: true,
+      }),
       ServiceModel.countDocuments({
         ...baseQuery,
         isDeleted: false,
@@ -1087,7 +1163,7 @@ export class ServiceService {
 
   async isSlugAvailable(
     slug: string,
-    excludeServiceId?: string
+    excludeServiceId?: string,
   ): Promise<boolean> {
     const query: Record<string, any> = {
       slug: slug.toLowerCase(),
@@ -1103,21 +1179,26 @@ export class ServiceService {
 
   async bulkUpdateServices(
     serviceIds: string[],
-    updates: Partial<Service>
+    updates: Partial<Service>,
   ): Promise<{ modifiedCount: number }> {
     const objectIds = serviceIds
       .filter((id) => Types.ObjectId.isValid(id))
       .map((id) => new Types.ObjectId(id));
 
-    if (objectIds.length === 0) throw new Error("No valid service IDs provided");
+    if (objectIds.length === 0)
+      throw new Error("No valid service IDs provided");
 
     // coverImage and scheduledActivationAt must never be bulk-set —
     // both require per-entity handling
-    const { coverImage: _, scheduledActivationAt: __, ...safeUpdates } = updates as any;
+    const {
+      coverImage: _,
+      scheduledActivationAt: __,
+      ...safeUpdates
+    } = updates as any;
 
     const result = await ServiceModel.updateMany(
       { _id: { $in: objectIds }, isDeleted: false },
-      safeUpdates
+      safeUpdates,
     );
 
     return { modifiedCount: result.modifiedCount };
@@ -1129,7 +1210,8 @@ export class ServiceService {
     category?: { id: Types.ObjectId; name: string; slug: string };
     provider?: { id: Types.ObjectId; businessName?: string };
   }> {
-    if (!Types.ObjectId.isValid(serviceId)) throw new Error("Invalid service ID");
+    if (!Types.ObjectId.isValid(serviceId))
+      throw new Error("Invalid service ID");
 
     const service = await ServiceModel.findOne({
       _id: new Types.ObjectId(serviceId),
@@ -1141,12 +1223,15 @@ export class ServiceService {
 
     if (!service) return { service: null };
 
-    const result: ReturnType<typeof this.getCompleteService> extends Promise<infer R> ? R : never =
-      { service: service as Service };
+    const result: ReturnType<typeof this.getCompleteService> extends Promise<
+      infer R
+    >
+      ? R
+      : never = { service: service as Service };
 
     if (service.coverImage) {
       const file = await this.fileService.getFileById(
-        service.coverImage.toString()
+        service.coverImage.toString(),
       );
       if (file?.status === "active") {
         result.coverImage = {
@@ -1157,12 +1242,12 @@ export class ServiceService {
       }
     }
 
-    const cat = (service.categoryId as any);
+    const cat = service.categoryId as any;
     if (cat?._id) {
       result.category = { id: cat._id, name: cat.catName, slug: cat.slug };
     }
 
-    const prov = (service.providerId as any);
+    const prov = service.providerId as any;
     if (prov?._id) {
       result.provider = { id: prov._id, businessName: prov.businessName };
     }

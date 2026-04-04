@@ -4,9 +4,15 @@ import { categoryCoverConfig } from "./config/categoryCover.config";
 import { profilePictureConfig } from "./config/profilePicture.config";
 import { serviceCoverConfig } from "./config/serviceCover.config";
 import { GenericMongoDBImageHandler } from "./handlers/db.handler";
-import { bookingAttachmentConfig, taskAttachmentConfig } from "./config/bookingTaskimage.config";
+import {
+  bookingAttachmentConfig,
+  taskAttachmentConfig,
+} from "./config/bookingTaskimage.config";
 import { clientIdImageConfig } from "./config/clientprofileImage.config";
-import { providerGalleryConfig, providerIdImageConfig } from "./config/providerProfileImage.config";
+import {
+  providerGalleryConfig,
+  providerIdImageConfig,
+} from "./config/providerProfileImage.config";
 
 // ─── MongoDBFileController ────────────────────────────────────────────────────
 //
@@ -382,126 +388,224 @@ export class MongoDBFileController {
 
     const profilePictureHandler = new GenericMongoDBImageHandler(
       profilePictureConfig,
-      this.fileService
+      this.fileService,
     );
 
     const categoryCoverHandler = new GenericMongoDBImageHandler(
       categoryCoverConfig,
-      this.fileService
+      this.fileService,
     );
 
     const serviceCoverHandler = new GenericMongoDBImageHandler(
       serviceCoverConfig,
-      this.fileService
+      this.fileService,
     );
 
     const clientIdImageHandler = new GenericMongoDBImageHandler(
       clientIdImageConfig,
-      this.fileService
+      this.fileService,
     );
 
     const providerGalleryHandler = new GenericMongoDBImageHandler(
       providerGalleryConfig,
-      this.fileService
+      this.fileService,
     );
 
     const providerIdImageHandler = new GenericMongoDBImageHandler(
       providerIdImageConfig,
-      this.fileService
+      this.fileService,
     );
 
     const bookingAttachmentHandler = new GenericMongoDBImageHandler(
       bookingAttachmentConfig,
-      this.fileService
+      this.fileService,
     );
 
     const taskAttachmentHandler = new GenericMongoDBImageHandler(
       taskAttachmentConfig,
-      this.fileService
+      this.fileService,
     );
 
     // ── Profile Picture bindings ─────────────────────────────────────────────
-    this.getProfilePictureRecord        = profilePictureHandler.getRecord.bind(profilePictureHandler);
-    this.getPublicProfilePictureRecord  = profilePictureHandler.getPublicRecord.bind(profilePictureHandler);
-    this.getProfilePictureHistory       = profilePictureHandler.getHistory.bind(profilePictureHandler);
-    this.updateProfilePictureMetadata   = profilePictureHandler.updateMetadata.bind(profilePictureHandler);
-    this.archiveProfilePicture          = profilePictureHandler.archive.bind(profilePictureHandler);
-    this.restoreProfilePicture          = profilePictureHandler.restore.bind(profilePictureHandler);
-    this.deleteProfilePicture           = profilePictureHandler.delete.bind(profilePictureHandler);
-    this.getProfilePictureStats         = profilePictureHandler.getStats.bind(profilePictureHandler);
-    this.cleanupArchivedProfilePictures = profilePictureHandler.cleanupArchived.bind(profilePictureHandler);
+    this.getProfilePictureRecord = profilePictureHandler.getRecord.bind(
+      profilePictureHandler,
+    );
+    this.getPublicProfilePictureRecord =
+      profilePictureHandler.getPublicRecord.bind(profilePictureHandler);
+    this.getProfilePictureHistory = profilePictureHandler.getHistory.bind(
+      profilePictureHandler,
+    );
+    this.updateProfilePictureMetadata =
+      profilePictureHandler.updateMetadata.bind(profilePictureHandler);
+    this.archiveProfilePicture = profilePictureHandler.archive.bind(
+      profilePictureHandler,
+    );
+    this.restoreProfilePicture = profilePictureHandler.restore.bind(
+      profilePictureHandler,
+    );
+    this.deleteProfilePicture = profilePictureHandler.delete.bind(
+      profilePictureHandler,
+    );
+    this.getProfilePictureStats = profilePictureHandler.getStats.bind(
+      profilePictureHandler,
+    );
+    this.cleanupArchivedProfilePictures =
+      profilePictureHandler.cleanupArchived.bind(profilePictureHandler);
 
     // ── Category Cover bindings ──────────────────────────────────────────────
-    this.getCategoryCoverRecord        = categoryCoverHandler.getRecord.bind(categoryCoverHandler);
-    this.getPublicCategoryCoverRecord  = categoryCoverHandler.getPublicRecord.bind(categoryCoverHandler);
-    this.getCategoryCoverHistory       = categoryCoverHandler.getHistory.bind(categoryCoverHandler);
-    this.updateCategoryCoverMetadata   = categoryCoverHandler.updateMetadata.bind(categoryCoverHandler);
-    this.archiveCategoryCover          = categoryCoverHandler.archive.bind(categoryCoverHandler);
-    this.restoreCategoryCover          = categoryCoverHandler.restore.bind(categoryCoverHandler);
-    this.deleteCategoryCover           = categoryCoverHandler.delete.bind(categoryCoverHandler);
-    this.getCategoryCoverStats         = categoryCoverHandler.getStats.bind(categoryCoverHandler);
-    this.cleanupArchivedCategoryCovers = categoryCoverHandler.cleanupArchived.bind(categoryCoverHandler);
+    this.getCategoryCoverRecord =
+      categoryCoverHandler.getRecord.bind(categoryCoverHandler);
+    this.getPublicCategoryCoverRecord =
+      categoryCoverHandler.getPublicRecord.bind(categoryCoverHandler);
+    this.getCategoryCoverHistory =
+      categoryCoverHandler.getHistory.bind(categoryCoverHandler);
+    this.updateCategoryCoverMetadata =
+      categoryCoverHandler.updateMetadata.bind(categoryCoverHandler);
+    this.archiveCategoryCover =
+      categoryCoverHandler.archive.bind(categoryCoverHandler);
+    this.restoreCategoryCover =
+      categoryCoverHandler.restore.bind(categoryCoverHandler);
+    this.deleteCategoryCover =
+      categoryCoverHandler.delete.bind(categoryCoverHandler);
+    this.getCategoryCoverStats =
+      categoryCoverHandler.getStats.bind(categoryCoverHandler);
+    this.cleanupArchivedCategoryCovers =
+      categoryCoverHandler.cleanupArchived.bind(categoryCoverHandler);
 
     // ── Service Cover bindings ───────────────────────────────────────────────
-    this.getServiceCoverRecord        = serviceCoverHandler.getRecord.bind(serviceCoverHandler);
-    this.getPublicServiceCoverRecord  = serviceCoverHandler.getPublicRecord.bind(serviceCoverHandler);
-    this.getServiceCoverHistory       = serviceCoverHandler.getHistory.bind(serviceCoverHandler);
-    this.updateServiceCoverMetadata   = serviceCoverHandler.updateMetadata.bind(serviceCoverHandler);
-    this.archiveServiceCover          = serviceCoverHandler.archive.bind(serviceCoverHandler);
-    this.restoreServiceCover          = serviceCoverHandler.restore.bind(serviceCoverHandler);
-    this.deleteServiceCover           = serviceCoverHandler.delete.bind(serviceCoverHandler);
-    this.getServiceCoverStats         = serviceCoverHandler.getStats.bind(serviceCoverHandler);
-    this.cleanupArchivedServiceCovers = serviceCoverHandler.cleanupArchived.bind(serviceCoverHandler);
+    this.getServiceCoverRecord =
+      serviceCoverHandler.getRecord.bind(serviceCoverHandler);
+    this.getPublicServiceCoverRecord =
+      serviceCoverHandler.getPublicRecord.bind(serviceCoverHandler);
+    this.getServiceCoverHistory =
+      serviceCoverHandler.getHistory.bind(serviceCoverHandler);
+    this.updateServiceCoverMetadata =
+      serviceCoverHandler.updateMetadata.bind(serviceCoverHandler);
+    this.archiveServiceCover =
+      serviceCoverHandler.archive.bind(serviceCoverHandler);
+    this.restoreServiceCover =
+      serviceCoverHandler.restore.bind(serviceCoverHandler);
+    this.deleteServiceCover =
+      serviceCoverHandler.delete.bind(serviceCoverHandler);
+    this.getServiceCoverStats =
+      serviceCoverHandler.getStats.bind(serviceCoverHandler);
+    this.cleanupArchivedServiceCovers =
+      serviceCoverHandler.cleanupArchived.bind(serviceCoverHandler);
 
     // ── Client ID Image bindings ─────────────────────────────────────────────
-    this.getClientIdImageRecord        = clientIdImageHandler.getRecord.bind(clientIdImageHandler);
-    this.getClientIdImageHistory       = clientIdImageHandler.getHistory.bind(clientIdImageHandler);
-    this.updateClientIdImageMetadata   = clientIdImageHandler.updateMetadata.bind(clientIdImageHandler);
-    this.archiveClientIdImage          = clientIdImageHandler.archive.bind(clientIdImageHandler);
-    this.restoreClientIdImage          = clientIdImageHandler.restore.bind(clientIdImageHandler);
-    this.deleteClientIdImage           = clientIdImageHandler.delete.bind(clientIdImageHandler);
-    this.getClientIdImageStats         = clientIdImageHandler.getStats.bind(clientIdImageHandler);
-    this.cleanupArchivedClientIdImages = clientIdImageHandler.cleanupArchived.bind(clientIdImageHandler);
+    this.getClientIdImageRecord =
+      clientIdImageHandler.getRecord.bind(clientIdImageHandler);
+    this.getClientIdImageHistory =
+      clientIdImageHandler.getHistory.bind(clientIdImageHandler);
+    this.updateClientIdImageMetadata =
+      clientIdImageHandler.updateMetadata.bind(clientIdImageHandler);
+    this.archiveClientIdImage =
+      clientIdImageHandler.archive.bind(clientIdImageHandler);
+    this.restoreClientIdImage =
+      clientIdImageHandler.restore.bind(clientIdImageHandler);
+    this.deleteClientIdImage =
+      clientIdImageHandler.delete.bind(clientIdImageHandler);
+    this.getClientIdImageStats =
+      clientIdImageHandler.getStats.bind(clientIdImageHandler);
+    this.cleanupArchivedClientIdImages =
+      clientIdImageHandler.cleanupArchived.bind(clientIdImageHandler);
 
     // ── Provider Gallery bindings ────────────────────────────────────────────
-    this.getProviderGalleryRecord        = providerGalleryHandler.getRecord.bind(providerGalleryHandler);
-    this.getPublicProviderGalleryRecord  = providerGalleryHandler.getPublicRecord.bind(providerGalleryHandler);
-    this.getProviderGalleryHistory       = providerGalleryHandler.getHistory.bind(providerGalleryHandler);
-    this.updateProviderGalleryMetadata   = providerGalleryHandler.updateMetadata.bind(providerGalleryHandler);
-    this.archiveProviderGallery          = providerGalleryHandler.archive.bind(providerGalleryHandler);
-    this.restoreProviderGallery          = providerGalleryHandler.restore.bind(providerGalleryHandler);
-    this.deleteProviderGallery           = providerGalleryHandler.delete.bind(providerGalleryHandler);
-    this.getProviderGalleryStats         = providerGalleryHandler.getStats.bind(providerGalleryHandler);
-    this.cleanupArchivedProviderGallery  = providerGalleryHandler.cleanupArchived.bind(providerGalleryHandler);
+    this.getProviderGalleryRecord = providerGalleryHandler.getRecord.bind(
+      providerGalleryHandler,
+    );
+    this.getPublicProviderGalleryRecord =
+      providerGalleryHandler.getPublicRecord.bind(providerGalleryHandler);
+    this.getProviderGalleryHistory = providerGalleryHandler.getHistory.bind(
+      providerGalleryHandler,
+    );
+    this.updateProviderGalleryMetadata =
+      providerGalleryHandler.updateMetadata.bind(providerGalleryHandler);
+    this.archiveProviderGallery = providerGalleryHandler.archive.bind(
+      providerGalleryHandler,
+    );
+    this.restoreProviderGallery = providerGalleryHandler.restore.bind(
+      providerGalleryHandler,
+    );
+    this.deleteProviderGallery = providerGalleryHandler.delete.bind(
+      providerGalleryHandler,
+    );
+    this.getProviderGalleryStats = providerGalleryHandler.getStats.bind(
+      providerGalleryHandler,
+    );
+    this.cleanupArchivedProviderGallery =
+      providerGalleryHandler.cleanupArchived.bind(providerGalleryHandler);
 
     // ── Provider ID Image bindings ───────────────────────────────────────────
-    this.getProviderIdImageRecord        = providerIdImageHandler.getRecord.bind(providerIdImageHandler);
-    this.getProviderIdImageHistory       = providerIdImageHandler.getHistory.bind(providerIdImageHandler);
-    this.updateProviderIdImageMetadata   = providerIdImageHandler.updateMetadata.bind(providerIdImageHandler);
-    this.archiveProviderIdImage          = providerIdImageHandler.archive.bind(providerIdImageHandler);
-    this.restoreProviderIdImage          = providerIdImageHandler.restore.bind(providerIdImageHandler);
-    this.deleteProviderIdImage           = providerIdImageHandler.delete.bind(providerIdImageHandler);
-    this.getProviderIdImageStats         = providerIdImageHandler.getStats.bind(providerIdImageHandler);
-    this.cleanupArchivedProviderIdImages = providerIdImageHandler.cleanupArchived.bind(providerIdImageHandler);
+    this.getProviderIdImageRecord = providerIdImageHandler.getRecord.bind(
+      providerIdImageHandler,
+    );
+    this.getProviderIdImageHistory = providerIdImageHandler.getHistory.bind(
+      providerIdImageHandler,
+    );
+    this.updateProviderIdImageMetadata =
+      providerIdImageHandler.updateMetadata.bind(providerIdImageHandler);
+    this.archiveProviderIdImage = providerIdImageHandler.archive.bind(
+      providerIdImageHandler,
+    );
+    this.restoreProviderIdImage = providerIdImageHandler.restore.bind(
+      providerIdImageHandler,
+    );
+    this.deleteProviderIdImage = providerIdImageHandler.delete.bind(
+      providerIdImageHandler,
+    );
+    this.getProviderIdImageStats = providerIdImageHandler.getStats.bind(
+      providerIdImageHandler,
+    );
+    this.cleanupArchivedProviderIdImages =
+      providerIdImageHandler.cleanupArchived.bind(providerIdImageHandler);
 
     // ── Booking Attachment bindings ──────────────────────────────────────────
-    this.getBookingAttachmentRecord        = bookingAttachmentHandler.getRecord.bind(bookingAttachmentHandler);
-    this.getBookingAttachmentHistory       = bookingAttachmentHandler.getHistory.bind(bookingAttachmentHandler);
-    this.updateBookingAttachmentMetadata   = bookingAttachmentHandler.updateMetadata.bind(bookingAttachmentHandler);
-    this.archiveBookingAttachment          = bookingAttachmentHandler.archive.bind(bookingAttachmentHandler);
-    this.restoreBookingAttachment          = bookingAttachmentHandler.restore.bind(bookingAttachmentHandler);
-    this.deleteBookingAttachment           = bookingAttachmentHandler.delete.bind(bookingAttachmentHandler);
-    this.getBookingAttachmentStats         = bookingAttachmentHandler.getStats.bind(bookingAttachmentHandler);
-    this.cleanupArchivedBookingAttachments = bookingAttachmentHandler.cleanupArchived.bind(bookingAttachmentHandler);
+    this.getBookingAttachmentRecord = bookingAttachmentHandler.getRecord.bind(
+      bookingAttachmentHandler,
+    );
+    this.getBookingAttachmentHistory = bookingAttachmentHandler.getHistory.bind(
+      bookingAttachmentHandler,
+    );
+    this.updateBookingAttachmentMetadata =
+      bookingAttachmentHandler.updateMetadata.bind(bookingAttachmentHandler);
+    this.archiveBookingAttachment = bookingAttachmentHandler.archive.bind(
+      bookingAttachmentHandler,
+    );
+    this.restoreBookingAttachment = bookingAttachmentHandler.restore.bind(
+      bookingAttachmentHandler,
+    );
+    this.deleteBookingAttachment = bookingAttachmentHandler.delete.bind(
+      bookingAttachmentHandler,
+    );
+    this.getBookingAttachmentStats = bookingAttachmentHandler.getStats.bind(
+      bookingAttachmentHandler,
+    );
+    this.cleanupArchivedBookingAttachments =
+      bookingAttachmentHandler.cleanupArchived.bind(bookingAttachmentHandler);
 
     // ── Task Attachment bindings ─────────────────────────────────────────────
-    this.getTaskAttachmentRecord        = taskAttachmentHandler.getRecord.bind(taskAttachmentHandler);
-    this.getTaskAttachmentHistory       = taskAttachmentHandler.getHistory.bind(taskAttachmentHandler);
-    this.updateTaskAttachmentMetadata   = taskAttachmentHandler.updateMetadata.bind(taskAttachmentHandler);
-    this.archiveTaskAttachment          = taskAttachmentHandler.archive.bind(taskAttachmentHandler);
-    this.restoreTaskAttachment          = taskAttachmentHandler.restore.bind(taskAttachmentHandler);
-    this.deleteTaskAttachment           = taskAttachmentHandler.delete.bind(taskAttachmentHandler);
-    this.getTaskAttachmentStats         = taskAttachmentHandler.getStats.bind(taskAttachmentHandler);
-    this.cleanupArchivedTaskAttachments = taskAttachmentHandler.cleanupArchived.bind(taskAttachmentHandler);
+    this.getTaskAttachmentRecord = taskAttachmentHandler.getRecord.bind(
+      taskAttachmentHandler,
+    );
+    this.getTaskAttachmentHistory = taskAttachmentHandler.getHistory.bind(
+      taskAttachmentHandler,
+    );
+    this.updateTaskAttachmentMetadata =
+      taskAttachmentHandler.updateMetadata.bind(taskAttachmentHandler);
+    this.archiveTaskAttachment = taskAttachmentHandler.archive.bind(
+      taskAttachmentHandler,
+    );
+    this.restoreTaskAttachment = taskAttachmentHandler.restore.bind(
+      taskAttachmentHandler,
+    );
+    this.deleteTaskAttachment = taskAttachmentHandler.delete.bind(
+      taskAttachmentHandler,
+    );
+    this.getTaskAttachmentStats = taskAttachmentHandler.getStats.bind(
+      taskAttachmentHandler,
+    );
+    this.cleanupArchivedTaskAttachments =
+      taskAttachmentHandler.cleanupArchived.bind(taskAttachmentHandler);
   }
 }

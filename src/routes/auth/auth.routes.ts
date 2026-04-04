@@ -1,6 +1,31 @@
 import express from "express";
-import { signup, login, logout, verifyEmail, resendVerification, forgotPassword, resetPassword, changePassword, refreshToken, deleteAccount, permanentlyDeleteAccount, restoreAccount, verifyUser, getAllUsers, getUserById, updateUserRole, deleteUser, restoreUser } from "../../controllers/auth/auth.controller";
-import { authenticateToken, requireVerification, requireAdmin, requireSuperAdmin } from "../../middleware/auth/auth.middleware";
+import {
+  signup,
+  login,
+  logout,
+  verifyEmail,
+  resendVerification,
+  forgotPassword,
+  resetPassword,
+  changePassword,
+  refreshToken,
+  deleteAccount,
+  permanentlyDeleteAccount,
+  restoreAccount,
+  verifyUser,
+  getAllUsers,
+  getUserById,
+  updateUserRole,
+  deleteUser,
+  restoreUser,
+  permanentlyDeleteUser,
+} from "../../controllers/auth/auth.controller";
+import {
+  authenticateToken,
+  requireVerification,
+  requireAdmin,
+  requireSuperAdmin,
+} from "../../middleware/auth/auth.middleware";
 import { SystemRole } from "../../types/base.types";
 import { AuthenticatedRequest } from "../../types/user.types";
 
@@ -30,10 +55,15 @@ router.post("/refresh-token", authenticateToken, refreshToken);
 // ─── Account Management ───────────────────────────────────────────────────────
 
 router.delete("/account", authenticateToken, deleteAccount);
-router.delete("/account/permanent", authenticateToken, permanentlyDeleteAccount);
+router.delete(
+  "/account/permanent",
+  authenticateToken,
+  permanentlyDeleteAccount,
+);
 router.post("/restore-account", restoreAccount);
 
 // ─── Current User ─────────────────────────────────────────────────────────────
+
 router.get("/me", authenticateToken, (req, res) => {
   const authReq = req as AuthenticatedRequest;
   res.json({
@@ -44,7 +74,6 @@ router.get("/me", authenticateToken, (req, res) => {
   });
 });
 
-// Returns authentication status without attaching full user document
 router.get("/status", authenticateToken, (req, res) => {
   const authReq = req as AuthenticatedRequest;
   res.json({
@@ -55,7 +84,6 @@ router.get("/status", authenticateToken, (req, res) => {
   });
 });
 
-// Token validation endpoint — called by other services / micro-frontends
 router.get("/verify-user", authenticateToken, verifyUser);
 
 // ─── Access Verification ──────────────────────────────────────────────────────
@@ -76,10 +104,9 @@ router.get(
         isEmailVerified: authReq.user?.isEmailVerified,
       },
     });
-  }
+  },
 );
 
-// isAdmin / isSuperAdmin removed from IUser — derive from systemRole
 router.get(
   "/verify-access/admin",
   authenticateToken,
@@ -99,7 +126,7 @@ router.get(
           authReq.user?.systemRole === SystemRole.SUPER_ADMIN,
       },
     });
-  }
+  },
 );
 
 router.get(
@@ -120,13 +147,18 @@ router.get(
         isSuperAdmin: authReq.user?.systemRole === SystemRole.SUPER_ADMIN,
       },
     });
-  }
+  },
 );
 
 // ─── Admin — User Management ──────────────────────────────────────────────────
 
 router.get("/admin/users", authenticateToken, requireAdmin, getAllUsers);
-router.get("/admin/users/:userId", authenticateToken, requireAdmin, getUserById);
+router.get(
+  "/admin/users/:userId",
+  authenticateToken,
+  requireAdmin,
+  getUserById,
+);
 
 // ─── Super Admin — Privileged Operations ─────────────────────────────────────
 
@@ -134,19 +166,29 @@ router.patch(
   "/admin/users/:userId/role",
   authenticateToken,
   requireSuperAdmin,
-  updateUserRole
+  updateUserRole,
 );
 router.delete(
   "/admin/users/:userId",
   authenticateToken,
   requireSuperAdmin,
-  deleteUser
+  deleteUser,
 );
 router.post(
   "/admin/users/:userId/restore",
   authenticateToken,
   requireSuperAdmin,
-  restoreUser
+  restoreUser,
+);
+
+// NOTE: This route must be defined BEFORE the generic /:userId DELETE above so
+// Express doesn't swallow "/permanent" as a userId. It is already fine here
+// because "/permanent" is a distinct literal segment appended after /:userId.
+router.delete(
+  "/admin/users/:userId/permanent",
+  authenticateToken,
+  requireSuperAdmin,
+  permanentlyDeleteUser,
 );
 
 // ─── Health Check ─────────────────────────────────────────────────────────────

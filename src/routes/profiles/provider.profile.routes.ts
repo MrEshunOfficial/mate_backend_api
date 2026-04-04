@@ -5,7 +5,42 @@ import {
   requireVerification,
   requireAdmin,
 } from "../../middleware/auth/auth.middleware";
-import { searchProviders, getProvidersByLocation, getProvidersNearCoordinates, getProvidersByService, getServiceOfferings, getProviderProfileById, getMyProviderProfile, getProfileLiveStatus, updateProviderProfile, updateContactInfo, updateLocationData, checkLocationVerification, updateBusinessInfo, updateWorkingHours, setAvailability, updateDepositSettings, addServiceOffering, removeServiceOffering, addGalleryImages, reorderGalleryImages, removeGalleryImage, updateIdImages, replaceIdImages, removeIdImage, getAllProviders, getProviderStats, getProviderProfileByRef, verifyProviderAddress, setCompanyTrained, adminDeleteProvider, adminRestoreProvider, adminAddServiceOffering, adminRemoveServiceOffering } from "../../controllers/profiles/provider/provider.profile.controller";
+import {
+  searchProviders,
+  getProvidersByLocation,
+  getProvidersNearCoordinates,
+  getProvidersByService,
+  getServiceOfferings,
+  getProviderProfileById,
+  getMyProviderProfile,
+  getProfileLiveStatus,
+  updateProviderProfile,
+  updateContactInfo,
+  updateLocationData,
+  checkLocationVerification,
+  updateBusinessInfo,
+  updateWorkingHours,
+  setAvailability,
+  updateDepositSettings,
+  addServiceOffering,
+  removeServiceOffering,
+  addGalleryImages,
+  reorderGalleryImages,
+  removeGalleryImage,
+  updateIdImages,
+  replaceIdImages,
+  removeIdImage,
+  getAllProviders,
+  getProviderStats,
+  getProviderProfileByRef,
+  verifyProviderAddress,
+  setCompanyTrained,
+  adminDeleteProvider,
+  adminRestoreProvider,
+  adminAddServiceOffering,
+  adminRemoveServiceOffering,
+  browseProviders,
+} from "../../controllers/profiles/provider/provider.profile.controller";
 import { requireProviderOwnership } from "../../middleware/role/ownership.middleware";
 import { requireProvider } from "../../middleware/role/role.middleware";
 
@@ -30,9 +65,15 @@ const adminOnly = [...authenticated, requireAdmin];
 const providerOwner = [...providerOnly, requireProviderOwnership];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PUBLIC ROUTES — no authentication required
-// Order matters: specific static segments before parameterised ones
+// PUBLIC — fully static paths
+// Must come first so Express never mistakes them for /:profileId.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /providers/browse
+ * Unified public provider discovery with full filter + sort surface.
+ */
+router.get("/browse", browseProviders);
 
 /**
  * GET /providers/search
@@ -51,6 +92,103 @@ router.get("/by-location", getProvidersByLocation);
  * Geospatial proximity search via MongoDB $near.
  */
 router.get("/near", getProvidersNearCoordinates);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROVIDER-AUTHENTICATED — static paths
+// /me must be declared before /:profileId or Express will capture "me" as the
+// profileId param and the controller will reject it as an invalid ObjectId.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /providers/me
+ * Returns the calling provider's full profile, resolved via their UserProfile._id.
+ */
+router.get("/me", ...providerOnly, getMyProviderProfile);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADMIN-ONLY — static + semi-static paths
+// All /admin/* routes begin with the fixed segment "admin", so they are safe
+// from the /:profileId wildcard. Declaring them here (above /:profileId) is
+// an extra safeguard and keeps the intent explicit.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /providers/admin/all
+ * Paginated list of all providers. ?includeDeleted=true to include soft-deleted.
+ */
+router.get("/admin/all", ...adminOnly, getAllProviders);
+
+/**
+ * GET /providers/admin/stats
+ * Platform-wide stats. Pass ?providerId= to scope to one provider.
+ */
+router.get("/admin/stats", ...adminOnly, getProviderStats);
+
+/**
+ * GET /providers/admin/ref/:userProfileId
+ * Look up a ProviderProfile by its parent UserProfile._id.
+ */
+router.get("/admin/ref/:userProfileId", ...adminOnly, getProviderProfileByRef);
+
+/**
+ * PUT /providers/admin/:profileId/verify-address
+ * Stamp isAddressVerified = true after a human has confirmed the address.
+ */
+router.put(
+  "/admin/:profileId/verify-address",
+  ...adminOnly,
+  verifyProviderAddress,
+);
+
+/**
+ * PUT /providers/admin/:profileId/company-trained
+ * Set or clear the isCompanyTrained flag.
+ * Body: { isCompanyTrained: boolean }
+ */
+router.put(
+  "/admin/:profileId/company-trained",
+  ...adminOnly,
+  setCompanyTrained,
+);
+
+/**
+ * DELETE /providers/admin/:profileId
+ * Admin soft-delete a provider profile.
+ */
+router.delete("/admin/:profileId", ...adminOnly, adminDeleteProvider);
+
+/**
+ * POST /providers/admin/:profileId/restore
+ * Restore a soft-deleted provider profile.
+ */
+router.post("/admin/:profileId/restore", ...adminOnly, adminRestoreProvider);
+
+/**
+ * POST /providers/admin/:profileId/services/:serviceId
+ * Admin: force-link a service (bypasses ownership guard).
+ */
+router.post(
+  "/admin/:profileId/services/:serviceId",
+  ...adminOnly,
+  adminAddServiceOffering,
+);
+
+/**
+ * DELETE /providers/admin/:profileId/services/:serviceId
+ * Admin: force-unlink a service.
+ */
+router.delete(
+  "/admin/:profileId/services/:serviceId",
+  ...adminOnly,
+  adminRemoveServiceOffering,
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PUBLIC — parameterised paths
+// /:profileId is a wildcard; anything declared after this point that starts
+// with a plain word segment will be swallowed by it, so keep all static paths
+// above this block.
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * GET /providers/by-service/:serviceId
@@ -72,21 +210,18 @@ router.get("/:profileId/services", getServiceOfferings);
 router.get("/:profileId", getProviderProfileById);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PROVIDER-AUTHENTICATED ROUTES — require valid JWT + provider role
+// PROVIDER-AUTHENTICATED — parameterised paths
 // ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * GET /providers/me
- * Returns the calling provider's full profile, resolved via their UserProfile._id.
- */
-router.get("/me", ...providerOnly, getMyProviderProfile);
 
 /**
  * GET /providers/:profileId/profile-status
  * Onboarding checklist: returns isLive and missingFields.
- * Owner and admins can call this; middleware chain enforces ownership.
  */
-router.get("/:profileId/profile-status", ...providerOwner, getProfileLiveStatus);
+router.get(
+  "/:profileId/profile-status",
+  ...providerOwner,
+  getProfileLiveStatus,
+);
 
 /**
  * PUT /providers/:profileId
@@ -112,7 +247,11 @@ router.put("/:profileId/location", ...providerOwner, updateLocationData);
  * Self-service: re-run enrichment to check if stored address is still accurate.
  * Does NOT stamp isAddressVerified — admin endpoint does that.
  */
-router.post("/:profileId/location/verify", ...providerOwner, checkLocationVerification);
+router.post(
+  "/:profileId/location/verify",
+  ...providerOwner,
+  checkLocationVerification,
+);
 
 /**
  * PUT /providers/:profileId/business
@@ -136,21 +275,33 @@ router.put("/:profileId/availability", ...providerOwner, setAvailability);
  * PUT /providers/:profileId/deposit-settings
  * Update requireInitialDeposit and percentageDeposit as a unit.
  */
-router.put("/:profileId/deposit-settings", ...providerOwner, updateDepositSettings);
+router.put(
+  "/:profileId/deposit-settings",
+  ...providerOwner,
+  updateDepositSettings,
+);
 
-// ─── Service Offerings (provider-managed) ─────────────────────────────────────
+// ─── Service Offerings ────────────────────────────────────────────────────────
 
 /**
  * POST /providers/:profileId/services/:serviceId
- * Link a service to this provider's profile (repair / admin utility).
+ * Link a service to this provider's profile.
  */
-router.post("/:profileId/services/:serviceId", ...providerOwner, addServiceOffering);
+router.post(
+  "/:profileId/services/:serviceId",
+  ...providerOwner,
+  addServiceOffering,
+);
 
 /**
  * DELETE /providers/:profileId/services/:serviceId
  * Unlink a service from this provider's serviceOfferings.
  */
-router.delete("/:profileId/services/:serviceId", ...providerOwner, removeServiceOffering);
+router.delete(
+  "/:profileId/services/:serviceId",
+  ...providerOwner,
+  removeServiceOffering,
+);
 
 // ─── Gallery Images ───────────────────────────────────────────────────────────
 
@@ -166,13 +317,21 @@ router.post("/:profileId/gallery", ...providerOwner, addGalleryImages);
  * Replace the gallery array with a caller-supplied ordered list.
  * Must be declared before /:profileId/gallery/:fileId to avoid route collision.
  */
-router.put("/:profileId/gallery/reorder", ...providerOwner, reorderGalleryImages);
+router.put(
+  "/:profileId/gallery/reorder",
+  ...providerOwner,
+  reorderGalleryImages,
+);
 
 /**
  * DELETE /providers/:profileId/gallery/:fileId
  * Remove a single image from the gallery.
  */
-router.delete("/:profileId/gallery/:fileId", ...providerOwner, removeGalleryImage);
+router.delete(
+  "/:profileId/gallery/:fileId",
+  ...providerOwner,
+  removeGalleryImage,
+);
 
 // ─── ID Document Images ───────────────────────────────────────────────────────
 
@@ -197,75 +356,5 @@ router.put("/:profileId/id-images/replace", ...providerOwner, replaceIdImages);
  * Remove a single ID image.
  */
 router.delete("/:profileId/id-images/:fileId", ...providerOwner, removeIdImage);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ADMIN-ONLY ROUTES — require valid JWT + ADMIN or SUPER_ADMIN system role
-// Mount these under /admin/providers in the main app router:
-//   app.use("/api/admin/providers", providerProfileAdminRouter)
-// or keep them here under the same router if all routes are under /providers
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * GET /providers/admin/all
- * Paginated list of all providers. ?includeDeleted=true to include soft-deleted.
- */
-router.get("/admin/all", ...adminOnly, getAllProviders);
-
-/**
- * GET /providers/admin/stats
- * Platform-wide stats. Pass ?providerId= to scope to one provider.
- */
-router.get("/admin/stats", ...adminOnly, getProviderStats);
-
-/**
- * GET /providers/admin/ref/:userProfileId
- * Look up a ProviderProfile by its parent UserProfile._id.
- */
-router.get("/admin/ref/:userProfileId", ...adminOnly, getProviderProfileByRef);
-
-/**
- * PUT /providers/admin/:profileId/verify-address
- * Stamp isAddressVerified = true after a human has confirmed the address.
- */
-router.put("/admin/:profileId/verify-address", ...adminOnly, verifyProviderAddress);
-
-/**
- * PUT /providers/admin/:profileId/company-trained
- * Set or clear the isCompanyTrained flag.
- * Body: { isCompanyTrained: boolean }
- */
-router.put("/admin/:profileId/company-trained", ...adminOnly, setCompanyTrained);
-
-/**
- * DELETE /providers/admin/:profileId
- * Admin soft-delete a provider profile.
- */
-router.delete("/admin/:profileId", ...adminOnly, adminDeleteProvider);
-
-/**
- * POST /providers/admin/:profileId/restore
- * Restore a soft-deleted provider profile.
- */
-router.post("/admin/:profileId/restore", ...adminOnly, adminRestoreProvider);
-
-/**
- * POST /providers/admin/:profileId/services/:serviceId
- * Admin: force-link a service (bypasses ownership guard).
- */
-router.post(
-  "/admin/:profileId/services/:serviceId",
-  ...adminOnly,
-  adminAddServiceOffering
-);
-
-/**
- * DELETE /providers/admin/:profileId/services/:serviceId
- * Admin: force-unlink a service.
- */
-router.delete(
-  "/admin/:profileId/services/:serviceId",
-  ...adminOnly,
-  adminRemoveServiceOffering
-);
 
 export default router;

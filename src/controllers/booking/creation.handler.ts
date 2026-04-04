@@ -2,12 +2,19 @@ import { Response } from "express";
 import { Types } from "mongoose";
 import { getUserProfileId } from "../../middleware/role/role.middleware";
 import ProviderProfileModel from "../../models/profiles/provider.profile.model";
-import { CreateBookingFromTaskInput, bookingService, CreateBookingFromServiceRequestInput } from "../../service/booking.service";
+import {
+  CreateBookingFromTaskInput,
+  bookingService,
+  CreateBookingFromServiceRequestInput,
+} from "../../service/booking.service";
 import { AuthenticatedRequest } from "../../types/user.types";
-import { getParam, validateObjectId, handleError } from "../../utils/auth/auth.controller.utils";
+import {
+  getParam,
+  validateObjectId,
+  handleError,
+} from "../../utils/auth/auth.controller.utils";
 
 export class BookingCreationHandler {
-
   /**
    * POST /bookings/from-task/:taskId
    *
@@ -31,9 +38,13 @@ export class BookingCreationHandler {
    *   - A Booking is created with status CONFIRMED
    *   - The Task is stamped CONVERTED
    */
+  // ─── PATCH: BookingCreationHandler.createBookingFromTask ─────────────────────
+  // Remove the hard serviceId required check and update the JSDoc.
+  // Replace the existing createBookingFromTask method with this.
+
   createBookingFromTask = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const taskId = getParam(req.params.taskId);
@@ -49,31 +60,58 @@ export class BookingCreationHandler {
 
       const body = req.body as CreateBookingFromTaskInput;
 
-      // Required field validation
-      if (!body.serviceId) {
-        res.status(400).json({ success: false, message: "Validation error", error: "serviceId is required" });
+      // serviceId is OPTIONAL — when omitted the service layer derives it from
+      // task.matchedProviders[acceptedProvider].matchedServices[0].
+      // Validate it only when the caller explicitly supplies one.
+      if (body.serviceId && !validateObjectId(body.serviceId)) {
+        res.status(400).json({
+          success: false,
+          message: "Validation error",
+          error: "serviceId must be a valid ObjectId",
+        });
         return;
       }
+
       if (!body.serviceLocation) {
-        res.status(400).json({ success: false, message: "Validation error", error: "serviceLocation is required" });
+        res.status(400).json({
+          success: false,
+          message: "Validation error",
+          error: "serviceLocation is required",
+        });
         return;
       }
       if (!body.scheduledDate) {
-        res.status(400).json({ success: false, message: "Validation error", error: "scheduledDate is required" });
+        res.status(400).json({
+          success: false,
+          message: "Validation error",
+          error: "scheduledDate is required",
+        });
         return;
       }
       if (!body.scheduledTimeSlot?.start || !body.scheduledTimeSlot?.end) {
-        res.status(400).json({ success: false, message: "Validation error", error: "scheduledTimeSlot.start and .end are required" });
+        res.status(400).json({
+          success: false,
+          message: "Validation error",
+          error: "scheduledTimeSlot.start and .end are required",
+        });
         return;
       }
       if (!body.serviceDescription?.trim()) {
-        res.status(400).json({ success: false, message: "Validation error", error: "serviceDescription is required" });
+        res.status(400).json({
+          success: false,
+          message: "Validation error",
+          error: "serviceDescription is required",
+        });
         return;
       }
 
       const scheduledDate = new Date(body.scheduledDate);
       if (isNaN(scheduledDate.getTime())) {
-        res.status(400).json({ success: false, message: "Validation error", error: "scheduledDate must be a valid date string" });
+        res.status(400).json({
+          success: false,
+          message: "Validation error",
+          error: "scheduledDate must be a valid date string",
+        });
         return;
       }
 
@@ -85,7 +123,7 @@ export class BookingCreationHandler {
       res.status(201).json({
         success: true,
         message: "Booking created successfully from task",
-        booking:     result.booking,
+        booking: result.booking,
         taskUpdated: result.taskUpdated,
       });
     } catch (error) {
@@ -93,6 +131,7 @@ export class BookingCreationHandler {
         const clientErrors = [
           "not in ACCEPTED status",
           "does not belong to the accepted provider",
+          "no matched services",
           "Invalid",
           "not found",
           "inactive",
@@ -130,7 +169,7 @@ export class BookingCreationHandler {
    */
   createBookingFromServiceRequest = async (
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
   ): Promise<void> => {
     try {
       const serviceRequestId = getParam(req.params.serviceRequestId);
@@ -156,7 +195,7 @@ export class BookingCreationHandler {
       }
 
       const providerProfile = await ProviderProfileModel.findOne({
-        profile:   new Types.ObjectId(userProfileId),
+        profile: new Types.ObjectId(userProfileId),
         isDeleted: false,
       }).lean();
 
@@ -195,8 +234,8 @@ export class BookingCreationHandler {
       res.status(201).json({
         success: true,
         message: "Service request accepted and booking created successfully",
-        booking:                result.booking,
-        serviceRequestUpdated:  result.serviceRequestUpdated,
+        booking: result.booking,
+        serviceRequestUpdated: result.serviceRequestUpdated,
       });
     } catch (error) {
       if (error instanceof Error) {

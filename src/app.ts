@@ -27,7 +27,7 @@ import bookingRoutes from "./routes/booking/booking.routes";
 import serviceRequestRoutes from "./routes/service-request/service-request.routes";
 import taskAttachmentRoutes from "./routes/files/taskAttachment.routes";
 import { taskMatchingService } from "./service/tasks/task.matching.service";
-import bookingAttachmentRoutes from './routes/files/bookingAttachment.routes';
+import bookingAttachmentRoutes from "./routes/files/bookingAttachment.routes";
 
 dotenv.config();
 
@@ -42,7 +42,7 @@ app.use(
   cors({
     origin: isDevelopment ? "http://localhost:3000" : process.env.CLIENT_URL,
     credentials: true,
-  })
+  }),
 );
 
 app.use(express.json({ limit: PAYLOAD_LIMIT }));
@@ -117,7 +117,8 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   if (err.type === "entity.too.large") {
     return res.status(413).json({
       success: false,
-      message: "Request payload too large. Please use a smaller image (max 10MB).",
+      message:
+        "Request payload too large. Please use a smaller image (max 10MB).",
       error: "PAYLOAD_TOO_LARGE",
     });
   }
@@ -150,9 +151,9 @@ async function startServer(): Promise<void> {
   cloudinaryService = initCloudinaryService();
 
   const server = app.listen(PORT, () => {
-    console.log(`connection successful,
-      Server running on port ${PORT},
-      [${isDevelopment ? "development" : "production"}]`);
+    console.log(
+      `connection successful Server running on port ${PORT}, [${isDevelopment ? "development" : "production"}]`,
+    );
   });
 
   // ─── Graceful Shutdown ───────────────────────────────────────────────────────

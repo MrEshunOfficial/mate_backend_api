@@ -23,6 +23,7 @@ import {
   TaskMatchingService,
   taskMatchingService as defaultTaskMatchingService,
 } from "./task.matching.service";
+import { Coordinates } from "../../types/location.types";
 
 type TaskDocument = HydratedDocument<Task, TaskMethods>;
 
@@ -108,17 +109,16 @@ export class TaskService {
       throw new Error("Invalid client profile ID");
     }
 
-    // Verify the client profile exists
     const clientExists = await ClientProfileModel.countDocuments({
       _id: new Types.ObjectId(clientProfileId),
       isDeleted: false,
     });
     if (!clientExists) throw new Error("Client profile not found");
 
-    // Validate category if provided
     if (data.category) {
       const catId = data.category.toString();
-      if (!Types.ObjectId.isValid(catId)) throw new Error("Invalid category ID");
+      if (!Types.ObjectId.isValid(catId))
+        throw new Error("Invalid category ID");
       const catExists = await CategoryModel.countDocuments({
         _id: new Types.ObjectId(catId),
         isActive: true,
@@ -127,52 +127,101 @@ export class TaskService {
       if (!catExists) throw new Error("Category not found or inactive");
     }
 
-    // Enrich registeredLocation if coordinates are missing
+    // Clone the location context so we never mutate the original request body.
+    // Strip sourceProvider and isAddressVerified from the incoming payload —
+    // those fields must only be written by a successful enrichment, not echoed
+    // back from whatever the client sent.
     const locationContext = structuredClone
       ? structuredClone(data.locationContext)
       : JSON.parse(JSON.stringify(data.locationContext));
 
     const regLoc = locationContext.registeredLocation;
+    if (regLoc) {
+      delete regLoc.sourceProvider;
+      delete regLoc.isAddressVerified;
+    }
+
+    // Enrich registeredLocation when it has a GPS code but no resolved fields.
+    // Use gpsLocationAtPosting as the coordinate hint — this is the live device
+    // fix captured at task-posting time and is always more reliable than
+    // regLoc.gpsCoordinates, which is undefined at this point because the
+    // registered location hasn't been enriched yet.
     if (regLoc?.ghanaPostGPS && !regLoc.gpsCoordinates) {
+      const gpsHint: Coordinates | undefined =
+        locationContext.gpsLocationAtPosting?.latitude != null &&
+        locationContext.gpsLocationAtPosting?.longitude != null
+          ? {
+              latitude: locationContext.gpsLocationAtPosting.latitude,
+              longitude: locationContext.gpsLocationAtPosting.longitude,
+            }
+          : undefined;
+
       const enriched = await this.locationService.enrichLocation({
-        ghanaPostGPS:   regLoc.ghanaPostGPS,
+        ghanaPostGPS: regLoc.ghanaPostGPS,
         nearbyLandmark: regLoc.nearbyLandmark,
-        gpsCoordinates: regLoc.gpsCoordinates,
-      } as LocationEnrichmentInput);
+        gpsCoordinates: gpsHint,
+      });
 
       if (enriched.success && enriched.location) {
         locationContext.registeredLocation = enriched.location;
+
+        if (enriched.missingFields?.length) {
+          console.warn(
+            `[TaskService] Partial enrichment for "${regLoc.ghanaPostGPS}": ` +
+              `missing ${enriched.missingFields.join(", ")}`,
+          );
+        }
+      } else {
+        console.warn(
+          `[TaskService] Enrichment failed for "${regLoc.ghanaPostGPS}": ` +
+            `${enriched.error ?? "unknown error"}`,
+        );
+
+        // Best-effort: stamp GPS coords onto registeredLocation so matching
+        // has coordinates to work with even without resolved region/city.
+        // The OSM service now exposes coordinates on failure when it reached
+        // reverse geocoding before the error occurred.
+        const coordsToStamp = gpsHint ?? (enriched as any).coordinates;
+        if (coordsToStamp) {
+          locationContext.registeredLocation = {
+            ...regLoc,
+            gpsCoordinates: coordsToStamp,
+            updatedAt: new Date(),
+          };
+        }
       }
     }
 
-    // Calculate expiry
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + DEFAULT_EXPIRY_DAYS);
 
     const task = new TaskModel({
-      title:       data.title.trim(),
+      title: data.title.trim(),
       description: data.description.trim(),
-      category:    data.category
+      category: data.category
         ? new Types.ObjectId(data.category.toString())
         : undefined,
-      tags:        (data.tags ?? []).map((t) => t.toLowerCase().trim()).filter(Boolean),
-      clientId:    new Types.ObjectId(clientProfileId),
+      tags: (data.tags ?? [])
+        .map((t) => t.toLowerCase().trim())
+        .filter(Boolean),
+      clientId: new Types.ObjectId(clientProfileId),
       locationContext,
-      schedule:    data.schedule,
+      schedule: data.schedule,
       estimatedBudget: data.estimatedBudget
         ? {
             ...data.estimatedBudget,
-            currency: (data.estimatedBudget.currency ?? DEFAULT_CURRENCY).toUpperCase(),
+            currency: (
+              data.estimatedBudget.currency ?? DEFAULT_CURRENCY
+            ).toUpperCase(),
           }
         : undefined,
-      status:    TaskStatus.PENDING,
+      status: TaskStatus.PENDING,
       expiresAt,
       viewCount: 0,
     });
 
     await task.save();
 
-    // Trigger matching — non-blocking on failure
     try {
       const strategy = data.matchingStrategy ?? "intelligent";
       const { task: matched, summary } = await this.matchingService.runMatching(
@@ -214,10 +263,11 @@ export class TaskService {
         .populate("category", "catName slug")
         .populate("clientId", "bio mobileNumber profilePictureId")
         .populate({
-          path:   "matchedProviders.providerId",
-          select: "businessName locationData providerContactInfo serviceOfferings",
+          path: "matchedProviders.providerId",
+          select:
+            "businessName locationData providerContactInfo serviceOfferings",
           populate: {
-            path:   "serviceOfferings",
+            path: "serviceOfferings",
             select: "title slug isActive servicePricing",
           },
         });
@@ -301,18 +351,19 @@ export class TaskService {
     if (!EDITABLE_STATUSES.includes(task.status)) {
       throw new Error(
         `Cannot update a task with status: ${task.status}. ` +
-        `Only tasks in ${EDITABLE_STATUSES.join(", ")} may be edited.`,
+          `Only tasks in ${EDITABLE_STATUSES.join(", ")} may be edited.`,
       );
     }
 
     // Strip fields that must not change after creation
-    const {
-      locationContext: _loc,
-      ...safeUpdates
-    } = updates as Record<string, any>;
+    const { locationContext: _loc, ...safeUpdates } = updates as Record<
+      string,
+      any
+    >;
 
-    if (safeUpdates.title)       safeUpdates.title       = safeUpdates.title.trim();
-    if (safeUpdates.description) safeUpdates.description = safeUpdates.description.trim();
+    if (safeUpdates.title) safeUpdates.title = safeUpdates.title.trim();
+    if (safeUpdates.description)
+      safeUpdates.description = safeUpdates.description.trim();
     if (safeUpdates.tags) {
       safeUpdates.tags = safeUpdates.tags
         .map((t: string) => t.toLowerCase().trim())
@@ -334,13 +385,14 @@ export class TaskService {
 
     if (contentChanged) {
       try {
-        const { task: matched, summary } = await this.matchingService.runMatching(
-          task,
-          "intelligent",
-        );
+        const { task: matched, summary } =
+          await this.matchingService.runMatching(task, "intelligent");
         return { task: matched.toObject() as Task, matchingSummary: summary };
       } catch (matchError) {
-        console.error(`[TaskService] Re-matching failed for task ${task._id}:`, matchError);
+        console.error(
+          `[TaskService] Re-matching failed for task ${task._id}:`,
+          matchError,
+        );
       }
     }
 
@@ -354,10 +406,7 @@ export class TaskService {
    * a provider is engaged and the deletion would leave them without feedback.
    * Only DELETABLE_STATUSES are permitted.
    */
-  async deleteTask(
-    taskId: string,
-    deletedBy?: string,
-  ): Promise<boolean> {
+  async deleteTask(taskId: string, deletedBy?: string): Promise<boolean> {
     if (!Types.ObjectId.isValid(taskId)) throw new Error("Invalid task ID");
 
     const task = (await TaskModel.findOne({
@@ -370,7 +419,7 @@ export class TaskService {
     if (!DELETABLE_STATUSES.includes(task.status)) {
       throw new Error(
         `Cannot delete a task with status: ${task.status}. ` +
-        `Cancel the task first.`,
+          `Cancel the task first.`,
       );
     }
 
@@ -488,7 +537,7 @@ export class TaskService {
       {
         isDeleted: false,
         expiresAt: { $lte: new Date() },
-        status:    { $nin: TERMINAL_STATUSES },
+        status: { $nin: TERMINAL_STATUSES },
       },
       { status: TaskStatus.EXPIRED },
     );
@@ -511,8 +560,9 @@ export class TaskService {
     providerProfileId: string,
     message?: string,
   ): Promise<Task | null> {
-    if (!Types.ObjectId.isValid(taskId))            throw new Error("Invalid task ID");
-    if (!Types.ObjectId.isValid(providerProfileId)) throw new Error("Invalid provider profile ID");
+    if (!Types.ObjectId.isValid(taskId)) throw new Error("Invalid task ID");
+    if (!Types.ObjectId.isValid(providerProfileId))
+      throw new Error("Invalid provider profile ID");
 
     const [task, providerExists] = await Promise.all([
       TaskModel.findOne({ _id: new Types.ObjectId(taskId), isDeleted: false }),
@@ -522,7 +572,7 @@ export class TaskService {
       }),
     ]);
 
-    if (!task)           throw new Error("Task not found");
+    if (!task) throw new Error("Task not found");
     if (!providerExists) throw new Error("Provider profile not found");
 
     await (task as TaskDocument).addProviderInterest(
@@ -540,8 +590,9 @@ export class TaskService {
     taskId: string,
     providerProfileId: string,
   ): Promise<Task | null> {
-    if (!Types.ObjectId.isValid(taskId))            throw new Error("Invalid task ID");
-    if (!Types.ObjectId.isValid(providerProfileId)) throw new Error("Invalid provider profile ID");
+    if (!Types.ObjectId.isValid(taskId)) throw new Error("Invalid task ID");
+    if (!Types.ObjectId.isValid(providerProfileId))
+      throw new Error("Invalid provider profile ID");
 
     const task = (await TaskModel.findOne({
       _id: new Types.ObjectId(taskId),
@@ -570,13 +621,15 @@ export class TaskService {
     providerProfileId: string,
     message?: string,
   ): Promise<Task | null> {
-    if (!Types.ObjectId.isValid(taskId))            throw new Error("Invalid task ID");
-    if (!Types.ObjectId.isValid(clientProfileId))   throw new Error("Invalid client profile ID");
-    if (!Types.ObjectId.isValid(providerProfileId)) throw new Error("Invalid provider profile ID");
+    if (!Types.ObjectId.isValid(taskId)) throw new Error("Invalid task ID");
+    if (!Types.ObjectId.isValid(clientProfileId))
+      throw new Error("Invalid client profile ID");
+    if (!Types.ObjectId.isValid(providerProfileId))
+      throw new Error("Invalid provider profile ID");
 
     const [task, providerExists] = await Promise.all([
       TaskModel.findOne({
-        _id:      new Types.ObjectId(taskId),
+        _id: new Types.ObjectId(taskId),
         clientId: new Types.ObjectId(clientProfileId),
         isDeleted: false,
       }),
@@ -586,7 +639,7 @@ export class TaskService {
       }),
     ]);
 
-    if (!task)           throw new Error("Task not found or you do not own this task");
+    if (!task) throw new Error("Task not found or you do not own this task");
     if (!providerExists) throw new Error("Provider profile not found");
 
     await (task as TaskDocument).requestProvider(
@@ -610,8 +663,9 @@ export class TaskService {
     action: "accept" | "reject",
     message?: string,
   ): Promise<Task | null> {
-    if (!Types.ObjectId.isValid(taskId))            throw new Error("Invalid task ID");
-    if (!Types.ObjectId.isValid(providerProfileId)) throw new Error("Invalid provider profile ID");
+    if (!Types.ObjectId.isValid(taskId)) throw new Error("Invalid task ID");
+    if (!Types.ObjectId.isValid(providerProfileId))
+      throw new Error("Invalid provider profile ID");
 
     const task = (await TaskModel.findOne({
       _id: new Types.ObjectId(taskId),
@@ -648,15 +702,16 @@ export class TaskService {
     taskId: string,
     bookingId: string,
   ): Promise<Task | null> {
-    if (!Types.ObjectId.isValid(taskId))    throw new Error("Invalid task ID");
-    if (!Types.ObjectId.isValid(bookingId)) throw new Error("Invalid booking ID");
+    if (!Types.ObjectId.isValid(taskId)) throw new Error("Invalid task ID");
+    if (!Types.ObjectId.isValid(bookingId))
+      throw new Error("Invalid booking ID");
 
     // Verify the booking document actually exists before stamping its ID onto
     // the task. A missing booking here indicates a caller bug or a race
     // condition in the booking creation pipeline — fail loudly rather than
     // storing a dangling reference.
     const bookingExists = await BookingModel.countDocuments({
-      _id:       new Types.ObjectId(bookingId),
+      _id: new Types.ObjectId(bookingId),
       isDeleted: false,
     });
     if (!bookingExists) throw new Error("Booking not found");
@@ -665,14 +720,14 @@ export class TaskService {
 
     const updated = await TaskModel.findOneAndUpdate(
       {
-        _id:      new Types.ObjectId(taskId),
+        _id: new Types.ObjectId(taskId),
         isDeleted: false,
-        status:   { $in: convertible },
+        status: { $in: convertible },
       },
       {
-        status:               TaskStatus.CONVERTED,
+        status: TaskStatus.CONVERTED,
         convertedToBookingId: new Types.ObjectId(bookingId),
-        convertedAt:          new Date(),
+        convertedAt: new Date(),
       },
       { new: true, runValidators: true },
     ).lean();
@@ -680,7 +735,7 @@ export class TaskService {
     if (!updated) {
       throw new Error(
         `Task not found or not in a convertible state. ` +
-        `Task must be in ${convertible.join(" or ")} status.`,
+          `Task must be in ${convertible.join(" or ")} status.`,
       );
     }
 
@@ -717,7 +772,7 @@ export class TaskService {
     if (!REMATCHABLE_STATUSES.includes(task.status)) {
       throw new Error(
         `Cannot re-trigger matching for a task with status: ${task.status}. ` +
-        `Only tasks in ${REMATCHABLE_STATUSES.join(", ")} can be re-matched.`,
+          `Only tasks in ${REMATCHABLE_STATUSES.join(", ")} can be re-matched.`,
       );
     }
 
@@ -749,12 +804,13 @@ export class TaskService {
     const { limit = 20, skip = 0 } = pagination;
 
     const query: Record<string, any> = {
-      status:    TaskStatus.FLOATING,
+      status: TaskStatus.FLOATING,
       isDeleted: false,
     };
 
     if (filters.region) {
-      query["locationContext.registeredLocation.region"] = filters.region.trim();
+      query["locationContext.registeredLocation.region"] =
+        filters.region.trim();
     }
     if (filters.city) {
       query["locationContext.registeredLocation.city"] = filters.city.trim();
@@ -799,7 +855,7 @@ export class TaskService {
 
     const query = {
       "matchedProviders.providerId": new Types.ObjectId(providerProfileId),
-      status:    { $in: [TaskStatus.MATCHED, TaskStatus.FLOATING] },
+      status: { $in: [TaskStatus.MATCHED, TaskStatus.FLOATING] },
       isDeleted: false,
     };
 
@@ -836,7 +892,7 @@ export class TaskService {
 
     const query = {
       "requestedProvider.providerId": new Types.ObjectId(providerProfileId),
-      status:    TaskStatus.REQUESTED,
+      status: TaskStatus.REQUESTED,
       isDeleted: false,
     };
 
@@ -915,7 +971,7 @@ export class TaskService {
     const { limit = 20, skip = 0 } = pagination;
 
     const query: Record<string, any> = {
-      $text:     { $search: searchTerm.trim() },
+      $text: { $search: searchTerm.trim() },
       isDeleted: false,
     };
 
@@ -924,7 +980,8 @@ export class TaskService {
       query.category = new Types.ObjectId(filters.categoryId);
     }
     if (filters.region) {
-      query["locationContext.registeredLocation.region"] = filters.region.trim();
+      query["locationContext.registeredLocation.region"] =
+        filters.region.trim();
     }
     if (filters.clientId && Types.ObjectId.isValid(filters.clientId)) {
       query.clientId = new Types.ObjectId(filters.clientId);
@@ -967,10 +1024,11 @@ export class TaskService {
       isDeleted: false,
     })
       .populate({
-        path:   "interestedProviders.providerId",
-        select: "businessName locationData providerContactInfo serviceOfferings",
+        path: "interestedProviders.providerId",
+        select:
+          "businessName locationData providerContactInfo serviceOfferings",
         populate: {
-          path:   "serviceOfferings",
+          path: "serviceOfferings",
           select: "title slug isActive",
         },
       })
@@ -981,15 +1039,15 @@ export class TaskService {
     const providers = (task.interestedProviders ?? []).map((entry: any) => ({
       ...(entry.providerId ?? {}),
       expressedAt: entry.expressedAt,
-      message:     entry.message,
+      message: entry.message,
     }));
 
     return {
       providers,
       task: {
-        _id:    task._id,
+        _id: task._id,
         status: task.status,
-        title:  task.title,
+        title: task.title,
       },
     };
   }
@@ -1014,10 +1072,14 @@ export class TaskService {
       isDeleted: false,
     })
       .populate({
-        path:   "matchedProviders.providerId",
-        select: "businessName locationData providerContactInfo serviceOfferings businessGalleryImages",
+        path: "matchedProviders.providerId",
+        select:
+          "businessName locationData providerContactInfo serviceOfferings businessGalleryImages",
         populate: [
-          { path: "serviceOfferings", select: "title slug isActive servicePricing" },
+          {
+            path: "serviceOfferings",
+            select: "title slug isActive servicePricing",
+          },
           { path: "businessGalleryImages", select: "url thumbnailUrl" },
         ],
       })
@@ -1029,9 +1091,9 @@ export class TaskService {
       matchedProviders: task.matchedProviders ?? [],
       matchingCriteria: task.matchingCriteria,
       task: {
-        _id:                 task._id,
-        status:              task.status,
-        title:               task.title,
+        _id: task._id,
+        status: task.status,
+        title: task.title,
         matchingAttemptedAt: task.matchingAttemptedAt,
       },
     };
@@ -1073,9 +1135,9 @@ export class TaskService {
     const [total, active, converted, cancelled, expired] = await Promise.all([
       TaskModel.countDocuments({ clientId: clientObjectId, isDeleted: false }),
       TaskModel.countDocuments({
-        clientId:  clientObjectId,
+        clientId: clientObjectId,
         isDeleted: false,
-        status:    {
+        status: {
           $in: [
             TaskStatus.PENDING,
             TaskStatus.MATCHED,
@@ -1086,22 +1148,28 @@ export class TaskService {
         },
       }),
       TaskModel.countDocuments({
-        clientId: clientObjectId, isDeleted: false, status: TaskStatus.CONVERTED,
+        clientId: clientObjectId,
+        isDeleted: false,
+        status: TaskStatus.CONVERTED,
       }),
       TaskModel.countDocuments({
-        clientId: clientObjectId, isDeleted: false, status: TaskStatus.CANCELLED,
+        clientId: clientObjectId,
+        isDeleted: false,
+        status: TaskStatus.CANCELLED,
       }),
       TaskModel.countDocuments({
-        clientId: clientObjectId, isDeleted: false, status: TaskStatus.EXPIRED,
+        clientId: clientObjectId,
+        isDeleted: false,
+        status: TaskStatus.EXPIRED,
       }),
     ]);
 
     return {
-      totalTasks:     total,
-      activeTasks:    active,
+      totalTasks: total,
+      activeTasks: active,
       convertedTasks: converted,
       cancelledTasks: cancelled,
-      expiredTasks:   expired,
+      expiredTasks: expired,
     };
   }
 
@@ -1122,7 +1190,9 @@ export class TaskService {
     const { limit, skip } = pagination;
     const { status, clientId, includeDeleted = false } = filters;
 
-    const query: Record<string, any> = includeDeleted ? {} : { isDeleted: false };
+    const query: Record<string, any> = includeDeleted
+      ? {}
+      : { isDeleted: false };
     if (status) query.status = status;
     if (clientId && Types.ObjectId.isValid(clientId)) {
       query.clientId = new Types.ObjectId(clientId);
@@ -1135,6 +1205,48 @@ export class TaskService {
         .populate("category", "catName slug")
         .populate("clientId", "bio mobileNumber")
         .sort({ createdAt: -1 })
+        .limit(limit)
+        .skip(skip)
+        .lean(),
+      TaskModel.countDocuments(query),
+    ]);
+
+    return {
+      tasks: tasks as Task[],
+      total,
+      hasMore: skip + tasks.length < total,
+    };
+  }
+
+  // ─── Add to TaskService class, after getTasksWithProviderInterest ─────────────
+
+  /**
+   * Returns tasks where the given provider is the acceptedProvider.
+   * Includes both ACCEPTED (pending booking) and CONVERTED (booking created) tasks.
+   *
+   * Used by the provider dashboard to track committed work and booking history.
+   */
+  async getAcceptedTasksForProvider(
+    providerProfileId: string,
+    options: { limit?: number; skip?: number } = {},
+  ): Promise<{ tasks: Task[]; total: number; hasMore: boolean }> {
+    if (!Types.ObjectId.isValid(providerProfileId)) {
+      throw new Error("Invalid provider profile ID");
+    }
+
+    const { limit = 20, skip = 0 } = options;
+
+    const query = {
+      "acceptedProvider.providerId": new Types.ObjectId(providerProfileId),
+      status: { $in: [TaskStatus.ACCEPTED, TaskStatus.CONVERTED] },
+      isDeleted: false,
+    };
+
+    const [tasks, total] = await Promise.all([
+      TaskModel.find(query)
+        .populate("category", "catName slug")
+        .populate("clientId", "bio mobileNumber profilePictureId")
+        .sort({ "acceptedProvider.acceptedAt": -1 }) // most recently accepted first
         .limit(limit)
         .skip(skip)
         .lean(),
@@ -1183,35 +1295,66 @@ export class TaskService {
       deleted,
     ] = await Promise.all([
       TaskModel.countDocuments({ ...base, isDeleted: false }),
-      TaskModel.countDocuments({ ...base, isDeleted: false, status: TaskStatus.PENDING }),
-      TaskModel.countDocuments({ ...base, isDeleted: false, status: TaskStatus.MATCHED }),
-      TaskModel.countDocuments({ ...base, isDeleted: false, status: TaskStatus.FLOATING }),
-      TaskModel.countDocuments({ ...base, isDeleted: false, status: TaskStatus.REQUESTED }),
-      TaskModel.countDocuments({ ...base, isDeleted: false, status: TaskStatus.ACCEPTED }),
-      TaskModel.countDocuments({ ...base, isDeleted: false, status: TaskStatus.CONVERTED }),
-      TaskModel.countDocuments({ ...base, isDeleted: false, status: TaskStatus.CANCELLED }),
-      TaskModel.countDocuments({ ...base, isDeleted: false, status: TaskStatus.EXPIRED }),
+      TaskModel.countDocuments({
+        ...base,
+        isDeleted: false,
+        status: TaskStatus.PENDING,
+      }),
+      TaskModel.countDocuments({
+        ...base,
+        isDeleted: false,
+        status: TaskStatus.MATCHED,
+      }),
+      TaskModel.countDocuments({
+        ...base,
+        isDeleted: false,
+        status: TaskStatus.FLOATING,
+      }),
+      TaskModel.countDocuments({
+        ...base,
+        isDeleted: false,
+        status: TaskStatus.REQUESTED,
+      }),
+      TaskModel.countDocuments({
+        ...base,
+        isDeleted: false,
+        status: TaskStatus.ACCEPTED,
+      }),
+      TaskModel.countDocuments({
+        ...base,
+        isDeleted: false,
+        status: TaskStatus.CONVERTED,
+      }),
+      TaskModel.countDocuments({
+        ...base,
+        isDeleted: false,
+        status: TaskStatus.CANCELLED,
+      }),
+      TaskModel.countDocuments({
+        ...base,
+        isDeleted: false,
+        status: TaskStatus.EXPIRED,
+      }),
       TaskModel.countDocuments({ ...base, isDeleted: true }),
     ]);
 
     // Tasks that moved past PENDING without staying stuck = matching success
-    const matchedOrBeyond = matched + floating + requested + accepted + converted;
+    const matchedOrBeyond =
+      matched + floating + requested + accepted + converted;
     const matchingSuccessRate =
-      total > 0
-        ? parseFloat(((matchedOrBeyond / total) * 100).toFixed(2))
-        : 0;
+      total > 0 ? parseFloat(((matchedOrBeyond / total) * 100).toFixed(2)) : 0;
 
     return {
-      totalTasks:         total,
-      pendingTasks:       pending,
-      matchedTasks:       matched,
-      floatingTasks:      floating,
-      requestedTasks:     requested,
-      acceptedTasks:      accepted,
-      convertedTasks:     converted,
-      cancelledTasks:     cancelled,
-      expiredTasks:       expired,
-      deletedTasks:       deleted,
+      totalTasks: total,
+      pendingTasks: pending,
+      matchedTasks: matched,
+      floatingTasks: floating,
+      requestedTasks: requested,
+      acceptedTasks: accepted,
+      convertedTasks: converted,
+      cancelledTasks: cancelled,
+      expiredTasks: expired,
+      deletedTasks: deleted,
       matchingSuccessRate,
     };
   }

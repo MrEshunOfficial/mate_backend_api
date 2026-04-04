@@ -1,17 +1,20 @@
 import { Types, Model, HydratedDocument } from "mongoose";
 import { BaseEntity, SoftDeletable } from "./base.types";
-import { UserLocation, GPSLocation, BrowseLocationContext } from "./location.types";
+import {
+  UserLocation,
+  GPSLocation,
+  BrowseLocationContext,
+} from "./location.types";
 
 export enum ServiceRequestStatus {
-  PENDING    = "PENDING",    // submitted, awaiting provider response
-  ACCEPTED   = "ACCEPTED",   // provider accepted → converts to Booking
-  REJECTED   = "REJECTED",
-  EXPIRED    = "EXPIRED",
-  CANCELLED  = "CANCELLED",
+  PENDING = "PENDING", // submitted, awaiting provider response
+  ACCEPTED = "ACCEPTED", // provider accepted → converts to Booking
+  REJECTED = "REJECTED",
+  EXPIRED = "EXPIRED",
+  CANCELLED = "CANCELLED",
 }
 
 // ─── Service Request Entity ───────────────────────────────────────────────────
-
 export interface ServiceRequest extends BaseEntity, SoftDeletable {
   clientId: Types.ObjectId;
   providerId: Types.ObjectId;
@@ -36,7 +39,7 @@ export interface ServiceRequest extends BaseEntity, SoftDeletable {
     source: "gps_browse" | "registered" | "manual";
     gpsLocation?: GPSLocation;
     radiusKm?: number;
-    wasExpanded?: boolean;  // did the client use "load more" to find this provider?
+    wasExpanded?: boolean; // did the client use "load more" to find this provider?
   };
 
   convertedToBookingId?: Types.ObjectId;
@@ -50,17 +53,31 @@ export interface ServiceRequest extends BaseEntity, SoftDeletable {
 // ─── Instance Methods ─────────────────────────────────────────────────────────
 
 export interface ServiceRequestMethods {
-  softDelete(deletedBy?: Types.ObjectId): Promise<HydratedDocument<ServiceRequest, ServiceRequestMethods>>;
+  softDelete(
+    deletedBy?: Types.ObjectId,
+  ): Promise<HydratedDocument<ServiceRequest, ServiceRequestMethods>>;
   restore(): Promise<HydratedDocument<ServiceRequest, ServiceRequestMethods>>;
-  accept(providerId: Types.ObjectId, message?: string): Promise<HydratedDocument<ServiceRequest, ServiceRequestMethods>>;
-  reject(providerId: Types.ObjectId, message?: string): Promise<HydratedDocument<ServiceRequest, ServiceRequestMethods>>;
-  cancel(reason?: string, cancelledBy?: Types.ObjectId): Promise<HydratedDocument<ServiceRequest, ServiceRequestMethods>>;
+  accept(
+    providerId: Types.ObjectId,
+    message?: string,
+  ): Promise<HydratedDocument<ServiceRequest, ServiceRequestMethods>>;
+  reject(
+    providerId: Types.ObjectId,
+    message?: string,
+  ): Promise<HydratedDocument<ServiceRequest, ServiceRequestMethods>>;
+  cancel(
+    reason?: string,
+    cancelledBy?: Types.ObjectId,
+  ): Promise<HydratedDocument<ServiceRequest, ServiceRequestMethods>>;
 }
 
 // ─── Static Methods ───────────────────────────────────────────────────────────
 
-export interface ServiceRequestModel
-  extends Model<ServiceRequest, {}, ServiceRequestMethods> {
+export interface ServiceRequestModel extends Model<
+  ServiceRequest,
+  {},
+  ServiceRequestMethods
+> {
   findByClient(clientId: string): Promise<ServiceRequestDocument[]>;
   findByProvider(providerId: string): Promise<ServiceRequestDocument[]>;
   findPendingForProvider(providerId: string): Promise<ServiceRequestDocument[]>;
@@ -97,7 +114,7 @@ export interface BrowseServicesResponse {
     serviceId: Types.ObjectId;
     providerId: Types.ObjectId;
     distanceKm: number;
-    service: any;   // import Service at usage site
+    service: any; // import Service at usage site
   }>;
   locationContext: BrowseLocationContext;
   totalResults?: number;
@@ -136,4 +153,3 @@ export interface ServiceRequestResponse {
   booking?: any;
   error?: string;
 }
-

@@ -3,21 +3,21 @@ import { BaseEntity, SoftDeletable, ActorRole } from "./base.types";
 import { TaskLocationContext } from "./location.types";
 
 export enum TaskPriority {
-  LOW    = "LOW",
+  LOW = "LOW",
   MEDIUM = "MEDIUM",
-  HIGH   = "HIGH",
+  HIGH = "HIGH",
   URGENT = "URGENT",
 }
 
 export enum TaskStatus {
-  PENDING    = "PENDING",    // created, awaiting matching
-  MATCHED    = "MATCHED",    // providers matched by system
-  FLOATING   = "FLOATING",   // open to all providers
-  REQUESTED  = "REQUESTED",  // client selected a provider
-  ACCEPTED   = "ACCEPTED",   // provider accepted — pending conversion
-  CONVERTED  = "CONVERTED",  // converted to a Booking
-  EXPIRED    = "EXPIRED",
-  CANCELLED  = "CANCELLED",
+  PENDING = "PENDING", // created, awaiting matching
+  MATCHED = "MATCHED", // providers matched by system
+  FLOATING = "FLOATING", // open to all providers
+  REQUESTED = "REQUESTED", // client selected a provider
+  ACCEPTED = "ACCEPTED", // provider accepted — pending conversion
+  CONVERTED = "CONVERTED", // converted to a Booking
+  EXPIRED = "EXPIRED",
+  CANCELLED = "CANCELLED",
 }
 
 // ─── Matching Types ───────────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ export interface ProviderMatchResult {
     tagScore: number;
     categoryScore: number;
     locationScore: number;
-    pricingScore: number;     // aligned with TaskMatchingConfig.weights
+    pricingScore: number; // aligned with TaskMatchingConfig.weights
   };
 }
 
@@ -47,7 +47,7 @@ export interface TaskMatchingConfig {
     tagMatch: number;
     categoryMatch: number;
     locationProximity: number;
-    pricingMatch: number;     // pricing is a stated matching criterion
+    pricingMatch: number; // pricing is a stated matching criterion
   };
   minimumMatchScore: number;
   maxProvidersToReturn: number;
@@ -133,19 +133,43 @@ export interface Task extends BaseEntity, SoftDeletable {
 // ─── Instance Methods ─────────────────────────────────────────────────────────
 
 export interface TaskMethods {
-  softDelete(deletedBy?: Types.ObjectId): Promise<HydratedDocument<Task, TaskMethods>>;
+  softDelete(
+    deletedBy?: Types.ObjectId,
+  ): Promise<HydratedDocument<Task, TaskMethods>>;
   restore(): Promise<HydratedDocument<Task, TaskMethods>>;
-  findMatches(strategy?: "intelligent" | "location-only"): Promise<HydratedDocument<Task, TaskMethods>>;
-  calculateIntelligentMatchScore(provider: any, services: any[]): ProviderMatchResult;
+  findMatches(
+    strategy?: "intelligent" | "location-only",
+  ): Promise<HydratedDocument<Task, TaskMethods>>;
+  calculateIntelligentMatchScore(
+    provider: any,
+    services: any[],
+  ): ProviderMatchResult;
   calculateLocationMatchScore(provider: any): ProviderMatchResult;
   buildMatchReasons(provider: any, services: any[], scores: any): string[];
   makeFloating(): Promise<HydratedDocument<Task, TaskMethods>>;
-  addProviderInterest(providerId: Types.ObjectId, message?: string): Promise<HydratedDocument<Task, TaskMethods>>;
-  removeProviderInterest(providerId: Types.ObjectId): Promise<HydratedDocument<Task, TaskMethods>>;
-  requestProvider(providerId: Types.ObjectId, message?: string): Promise<HydratedDocument<Task, TaskMethods>>;
-  acceptTask(providerId: Types.ObjectId, message?: string): Promise<HydratedDocument<Task, TaskMethods>>;
-  rejectTask(providerId: Types.ObjectId, reason?: string): Promise<HydratedDocument<Task, TaskMethods>>;
-  cancelTask(reason?: string, cancelledBy?: ActorRole): Promise<HydratedDocument<Task, TaskMethods>>;
+  addProviderInterest(
+    providerId: Types.ObjectId,
+    message?: string,
+  ): Promise<HydratedDocument<Task, TaskMethods>>;
+  removeProviderInterest(
+    providerId: Types.ObjectId,
+  ): Promise<HydratedDocument<Task, TaskMethods>>;
+  requestProvider(
+    providerId: Types.ObjectId,
+    message?: string,
+  ): Promise<HydratedDocument<Task, TaskMethods>>;
+  acceptTask(
+    providerId: Types.ObjectId,
+    message?: string,
+  ): Promise<HydratedDocument<Task, TaskMethods>>;
+  rejectTask(
+    providerId: Types.ObjectId,
+    reason?: string,
+  ): Promise<HydratedDocument<Task, TaskMethods>>;
+  cancelTask(
+    reason?: string,
+    cancelledBy?: ActorRole,
+  ): Promise<HydratedDocument<Task, TaskMethods>>;
 }
 
 // ─── Static Methods ───────────────────────────────────────────────────────────
@@ -240,4 +264,3 @@ export interface TaskWithProvidersResponse {
   matchingSummary?: MatchingSummary;
   error?: string;
 }
-

@@ -6,7 +6,7 @@ export interface Coordinates {
 }
 
 export interface UserLocation {
-  ghanaPostGPS: string;         // e.g. "GA-123-4567"
+  ghanaPostGPS: string; // e.g. "GA-123-4567"
   nearbyLandmark?: string;
 
   // Auto-filled / verified
@@ -30,7 +30,7 @@ export interface UserLocation {
 export interface GPSLocation {
   latitude: number;
   longitude: number;
-  accuracy?: number;   // metres — used to judge reliability before matching
+  accuracy?: number; // metres — used to judge reliability before matching
   capturedAt: Date;
 }
 
@@ -38,17 +38,16 @@ export interface GPSLocation {
 
 // Task matching evaluates BOTH location sources; nearest radius wins
 export interface TaskLocationContext {
-  registeredLocation: UserLocation;   // from ClientProfile default address
+  registeredLocation: UserLocation; // from ClientProfile default address
   gpsLocationAtPosting?: GPSLocation; // live GPS when the task was created
-  activeRadiusKm?: number;            // resolved and stored by the matching engine
+  activeRadiusKm?: number; // resolved and stored by the matching engine
 }
 
 // ─── Service Browse Context ───────────────────────────────────────────────────
 
 export interface BrowseLocationContext {
   gpsLocation: GPSLocation;
-  initialRadiusKm: number;       // e.g. 20
-  expandedRadiusKm?: number;     // set after client hits "load more"
+  initialRadiusKm: number; // e.g. 20
+  expandedRadiusKm?: number; // set after client hits "load more"
   isExpanded: boolean;
 }
-

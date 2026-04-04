@@ -19,8 +19,8 @@ export interface SoftDeletable {
 export enum ActorRole {
   CUSTOMER = "customer",
   PROVIDER = "provider",
-  ADMIN    = "admin",
-  SYSTEM   = "system",
+  ADMIN = "admin",
+  SYSTEM = "system",
 }
 
 // ─── Contact ──────────────────────────────────────────────────────────────────
@@ -41,12 +41,12 @@ export interface ContactDetails {
 // ─── Identity ─────────────────────────────────────────────────────────────────
 
 export enum IdType {
-  NATIONAL_ID      = "national_id",
-  PASSPORT         = "passport",
-  VOTERS_ID        = "voters_id",
-  DRIVERS_LICENSE  = "drivers_license",
-  NHIS             = "nhis",
-  OTHER            = "other",
+  NATIONAL_ID = "national_id",
+  PASSPORT = "passport",
+  VOTERS_ID = "voters_id",
+  DRIVERS_LICENSE = "drivers_license",
+  NHIS = "nhis",
+  OTHER = "other",
 }
 
 export interface IdDetails {
@@ -63,31 +63,31 @@ export enum UserRole {
 }
 
 export enum SystemRole {
-  USER        = "user",
-  ADMIN       = "admin",
+  USER = "user",
+  ADMIN = "admin",
   SUPER_ADMIN = "super_admin",
 }
 
 export enum AuthProvider {
   CREDENTIALS = "credentials",
-  GOOGLE      = "google",
-  APPLE       = "apple",
-  GITHUB      = "github",
-  FACEBOOK    = "facebook",
+  GOOGLE = "google",
+  APPLE = "apple",
+  GITHUB = "github",
+  FACEBOOK = "facebook",
 }
 
 // ─── Service Lifecycle ────────────────────────────────────────────────────────
 
 export enum ServiceStatus {
   PENDING_APPROVAL = "pending-approval",
-  APPROVED         = "approved",
-  REJECTED         = "rejected",
-  SUSPENDED        = "suspended",
+  APPROVED = "approved",
+  REJECTED = "rejected",
+  SUSPENDED = "suspended",
 }
 
 export enum PopulationLevel {
-  NONE     = "none",
-  MINIMAL  = "minimal",
+  NONE = "none",
+  MINIMAL = "minimal",
   STANDARD = "standard",
   DETAILED = "detailed",
 }

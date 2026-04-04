@@ -74,8 +74,8 @@ export class OpenStreetMapLocationService {
   private readonly minRequestInterval: number = 1500;
   private requestCount: number = 0;
 
-  constructor(config?: { 
-    userAgent?: string; 
+  constructor(config?: {
+    userAgent?: string;
     email?: string;
     referer?: string;
   }) {
@@ -88,8 +88,8 @@ export class OpenStreetMapLocationService {
       timeout: 15000,
       headers: {
         "User-Agent": this.userAgent,
-        "Referer": this.referer,
-        "Accept": "application/json",
+        Referer: this.referer,
+        Accept: "application/json",
         "Accept-Language": "en",
       },
     });
@@ -109,7 +109,7 @@ export class OpenStreetMapLocationService {
           console.error("Nominatim Network Error:", error.message);
         }
         return Promise.reject(error);
-      }
+      },
     );
   }
 
@@ -122,7 +122,9 @@ export class OpenStreetMapLocationService {
 
     if (timeSinceLastRequest < this.minRequestInterval) {
       const waitTime = this.minRequestInterval - timeSinceLastRequest;
-      console.log(`⏳ Rate limiting: waiting ${waitTime}ms before next request`);
+      console.log(
+        `⏳ Rate limiting: waiting ${waitTime}ms before next request`,
+      );
       await new Promise((resolve) => setTimeout(resolve, waitTime));
     }
 
@@ -135,7 +137,7 @@ export class OpenStreetMapLocationService {
    * Reverse Geocoding with improved error handling
    */
   async reverseGeocode(
-    coordinates: Coordinates
+    coordinates: Coordinates,
   ): Promise<LocationEnrichmentResult> {
     try {
       console.log("🔍 Reverse geocoding:", coordinates);
@@ -152,7 +154,7 @@ export class OpenStreetMapLocationService {
             zoom: 18,
             // email is passed in headers via User-Agent
           },
-        }
+        },
       );
 
       console.log("✅ Nominatim response received:", {
@@ -188,13 +190,14 @@ export class OpenStreetMapLocationService {
       };
     } catch (error) {
       console.error("❌ Reverse geocoding failed:", error);
-      
+
       // Check for specific error types
       if (axios.isAxiosError(error)) {
         if (error.response?.status === 429) {
           return {
             success: false,
-            error: "Rate limit exceeded. Please wait before making more requests.",
+            error:
+              "Rate limit exceeded. Please wait before making more requests.",
           };
         }
         if (error.response?.status === 403) {
@@ -207,7 +210,8 @@ export class OpenStreetMapLocationService {
 
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Reverse geocoding failed",
+        error:
+          error instanceof Error ? error.message : "Reverse geocoding failed",
       };
     }
   }
@@ -230,7 +234,7 @@ export class OpenStreetMapLocationService {
             countrycodes: countryCode,
             limit: 1,
           },
-        }
+        },
       );
 
       if (!response.data || response.data.length === 0) {
@@ -260,12 +264,13 @@ export class OpenStreetMapLocationService {
       };
     } catch (error) {
       console.error("❌ Geocoding failed:", error);
-      
+
       if (axios.isAxiosError(error)) {
         if (error.response?.status === 429) {
           return {
             success: false,
-            error: "Rate limit exceeded. Please wait before making more requests.",
+            error:
+              "Rate limit exceeded. Please wait before making more requests.",
           };
         }
       }
@@ -283,7 +288,7 @@ export class OpenStreetMapLocationService {
   async enrichLocationData(
     ghanaPostGPS: string,
     coordinates?: Coordinates,
-    nearbyLandmark?: string
+    nearbyLandmark?: string,
   ): Promise<LocationEnrichmentResult> {
     try {
       console.log("🌍 Enriching location data:", {
@@ -293,81 +298,54 @@ export class OpenStreetMapLocationService {
       });
 
       let finalCoordinates = coordinates;
-      let reverseGeoResult: LocationEnrichmentResult | null = null;
 
-      // Strategy 1: If coordinates provided, use reverse geocoding
+      // Strategy 1: Reverse-geocode the provided coordinates (primary path)
       if (finalCoordinates) {
-        console.log("📍 Using provided coordinates for reverse geocoding");
-        reverseGeoResult = await this.reverseGeocode(finalCoordinates);
-
-        if (reverseGeoResult.success && reverseGeoResult.location) {
-          reverseGeoResult.location.ghanaPostGPS = ghanaPostGPS;
-          if (nearbyLandmark) {
-            reverseGeoResult.location.nearbyLandmark = nearbyLandmark;
-          }
-          return reverseGeoResult;
-        } else {
-          console.warn("⚠️ Reverse geocoding failed, trying geocoding...");
+        const result = await this.reverseGeocode(finalCoordinates);
+        if (result.success && result.location) {
+          result.location.ghanaPostGPS = ghanaPostGPS;
+          if (nearbyLandmark) result.location.nearbyLandmark = nearbyLandmark;
+          return result;
         }
+        console.warn(
+          "⚠️ Reverse geocoding failed, trying landmark fallback...",
+        );
       }
 
-      // Strategy 2: Try geocoding the Ghana Post GPS
-      if (ghanaPostGPS) {
-        console.log("🔍 Attempting to geocode Ghana Post GPS");
-        const geocodeResult = await this.geocode(ghanaPostGPS);
-
-        if (geocodeResult.success && geocodeResult.coordinates) {
-          finalCoordinates = geocodeResult.coordinates;
-          
-          // Try reverse geocoding with the found coordinates
-          reverseGeoResult = await this.reverseGeocode(finalCoordinates);
-          
-          if (reverseGeoResult.success && reverseGeoResult.location) {
-            reverseGeoResult.location.ghanaPostGPS = ghanaPostGPS;
-            if (nearbyLandmark) {
-              reverseGeoResult.location.nearbyLandmark = nearbyLandmark;
-            }
-            return reverseGeoResult;
-          }
-        }
-      }
-
-      // Strategy 3: Try geocoding with nearby landmark
+      // Strategy 2: Geocode the nearby landmark
+      // (Ghana Post codes are proprietary — Nominatim cannot resolve them)
       if (nearbyLandmark) {
-        console.log("🏢 Attempting to geocode nearby landmark:", nearbyLandmark);
+        console.log(
+          "🏢 Attempting to geocode nearby landmark:",
+          nearbyLandmark,
+        );
         const landmarkResult = await this.geocode(`${nearbyLandmark}, Ghana`);
-        
+
         if (landmarkResult.success && landmarkResult.coordinates) {
           finalCoordinates = landmarkResult.coordinates;
-          
-          reverseGeoResult = await this.reverseGeocode(finalCoordinates);
-          
-          if (reverseGeoResult.success && reverseGeoResult.location) {
-            reverseGeoResult.location.ghanaPostGPS = ghanaPostGPS;
-            reverseGeoResult.location.nearbyLandmark = nearbyLandmark;
-            return reverseGeoResult;
+          const result = await this.reverseGeocode(finalCoordinates);
+
+          if (result.success && result.location) {
+            result.location.ghanaPostGPS = ghanaPostGPS;
+            result.location.nearbyLandmark = nearbyLandmark;
+            return result;
           }
         }
       }
 
-      // Fallback: Return basic location with provided data
-      console.warn("⚠️ All enrichment strategies failed, using basic data");
+      // All strategies exhausted — return failure so callers can react
+      console.warn("⚠️ All enrichment strategies failed for:", ghanaPostGPS);
       return {
-        success: true,
-        location: {
-          ghanaPostGPS,
-          nearbyLandmark,
-          gpsCoordinates: finalCoordinates,
-          isAddressVerified: false,
-          sourceProvider: "openstreetmap",
-        },
-        coordinates: finalCoordinates,
+        success: false,
+        error: "Could not resolve location from coordinates or landmark",
+        coordinates: finalCoordinates, // expose coords for best-effort caller stamp
       };
     } catch (error) {
       console.error("❌ Location enrichment error:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Location enrichment failed",
+        error:
+          error instanceof Error ? error.message : "Location enrichment failed",
       };
     }
   }
@@ -377,7 +355,7 @@ export class OpenStreetMapLocationService {
    */
   async verifyLocation(
     ghanaPostGPS: string,
-    providedCoordinates: Coordinates
+    providedCoordinates: Coordinates,
   ): Promise<{
     verified: boolean;
     confidence: number;
@@ -402,7 +380,7 @@ export class OpenStreetMapLocationService {
 
       const distance = this.calculateDistance(
         providedCoordinates,
-        geocodeResult.coordinates
+        geocodeResult.coordinates,
       );
 
       const verified = distance < 0.5;
@@ -435,7 +413,7 @@ export class OpenStreetMapLocationService {
   async searchNearby(
     coordinates: Coordinates,
     query: string,
-    radiusKm: number = 5
+    radiusKm: number = 5,
   ): Promise<GeocodingResult[]> {
     try {
       await this.enforceRateLimit();
@@ -454,7 +432,7 @@ export class OpenStreetMapLocationService {
             viewbox: `${bbox.minLon},${bbox.maxLat},${bbox.maxLon},${bbox.minLat}`,
             limit: 10,
           },
-        }
+        },
       );
 
       return response.data.map((result) => ({
@@ -477,7 +455,7 @@ export class OpenStreetMapLocationService {
    * Improved Ghana location mapping
    */
   private mapNominatimToGhanaLocation(
-    address: NominatimAddress
+    address: NominatimAddress,
   ): Partial<UserLocation> {
     const location: Partial<UserLocation> = {
       region: address.state || address.region,
@@ -495,10 +473,7 @@ export class OpenStreetMapLocationService {
   /**
    * Calculate distance between two coordinates
    */
-  private calculateDistance(
-    coord1: Coordinates,
-    coord2: Coordinates
-  ): number {
+  private calculateDistance(coord1: Coordinates, coord2: Coordinates): number {
     const R = 6371;
     const dLat = this.toRadians(coord2.latitude - coord1.latitude);
     const dLon = this.toRadians(coord2.longitude - coord1.longitude);
@@ -523,7 +498,7 @@ export class OpenStreetMapLocationService {
    */
   private createBoundingBox(
     center: Coordinates,
-    radiusKm: number
+    radiusKm: number,
   ): {
     minLat: number;
     maxLat: number;
@@ -531,7 +506,8 @@ export class OpenStreetMapLocationService {
     maxLon: number;
   } {
     const latDegreePerKm = 1 / 111;
-    const lonDegreePerKm = 1 / (111 * Math.cos(this.toRadians(center.latitude)));
+    const lonDegreePerKm =
+      1 / (111 * Math.cos(this.toRadians(center.latitude)));
 
     return {
       minLat: center.latitude - radiusKm * latDegreePerKm,
@@ -544,9 +520,7 @@ export class OpenStreetMapLocationService {
   /**
    * Batch geocode with automatic rate limiting
    */
-  async batchGeocode(
-    queries: string[]
-  ): Promise<Map<string, GeocodingResult>> {
+  async batchGeocode(queries: string[]): Promise<Map<string, GeocodingResult>> {
     const results = new Map<string, GeocodingResult>();
     console.log(`📦 Batch geocoding ${queries.length} queries`);
 
@@ -563,7 +537,7 @@ export class OpenStreetMapLocationService {
    */
   async getPlaceDetails(
     osmType: "N" | "W" | "R",
-    osmId: number
+    osmId: number,
   ): Promise<LocationEnrichmentResult> {
     try {
       await this.enforceRateLimit();
@@ -576,7 +550,7 @@ export class OpenStreetMapLocationService {
             format: "json",
             addressdetails: 1,
           },
-        }
+        },
       );
 
       const data = response.data[0]; // lookup returns array
@@ -606,7 +580,10 @@ export class OpenStreetMapLocationService {
       console.error("❌ Place details error:", error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Failed to get place details",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to get place details",
       };
     }
   }

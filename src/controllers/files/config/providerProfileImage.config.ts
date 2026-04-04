@@ -46,8 +46,7 @@ export const providerGalleryConfig: EntityImageConfig = {
 
   uploadMode: "linked",
 
-  getLinkedFolder: (entityId: string) =>
-    `providers/${entityId}/gallery`,
+  getLinkedFolder: (entityId: string) => `providers/${entityId}/gallery`,
 
   // ── Entity ID extraction ──────────────────────────────────────────────────
 
@@ -63,12 +62,12 @@ export const providerGalleryConfig: EntityImageConfig = {
   linkToEntity: async (
     entityId: string,
     fileId: Types.ObjectId,
-    _userId: string
+    _userId: string,
   ): Promise<boolean> => {
     const result = await ProviderProfileModel.findOneAndUpdate(
       { _id: new Types.ObjectId(entityId), isDeleted: false },
       { $addToSet: { businessGalleryImages: fileId } },
-      { new: true }
+      { new: true },
     );
     return result !== null;
   },
@@ -76,11 +75,11 @@ export const providerGalleryConfig: EntityImageConfig = {
   unlinkFromEntity: async (
     entityId: string,
     fileId: Types.ObjectId,
-    _userId: string
+    _userId: string,
   ): Promise<void> => {
     await ProviderProfileModel.updateOne(
       { _id: new Types.ObjectId(entityId), isDeleted: false },
-      { $pull: { businessGalleryImages: fileId } }
+      { $pull: { businessGalleryImages: fileId } },
     );
   },
 
@@ -96,12 +95,12 @@ export const providerGalleryConfig: EntityImageConfig = {
     _fileId: Types.ObjectId,
     entityId: string,
     _userId: string,
-    mongoService: MongoDBFileService
+    mongoService: MongoDBFileService,
   ): Promise<boolean> => {
     const files = await mongoService.getFilesByEntity(
       FileEntityType.PROVIDER_PROFILE,
       entityId,
-      { status: "active" }
+      { status: "active" },
     );
 
     const pendingFiles = files.filter((f) => f.label === "provider_gallery");
@@ -112,7 +111,7 @@ export const providerGalleryConfig: EntityImageConfig = {
     const result = await ProviderProfileModel.findOneAndUpdate(
       { _id: new Types.ObjectId(entityId), isDeleted: false },
       { $addToSet: { businessGalleryImages: { $each: fileIds } } },
-      { new: true }
+      { new: true },
     );
 
     return result !== null;
@@ -130,8 +129,7 @@ export const providerIdImageConfig: EntityImageConfig = {
 
   uploadMode: "linked",
 
-  getLinkedFolder: (entityId: string) =>
-    `providers/${entityId}/id_documents`,
+  getLinkedFolder: (entityId: string) => `providers/${entityId}/id_documents`,
 
   // ── Entity ID extraction ──────────────────────────────────────────────────
 
@@ -146,12 +144,12 @@ export const providerIdImageConfig: EntityImageConfig = {
   linkToEntity: async (
     entityId: string,
     fileId: Types.ObjectId,
-    _userId: string
+    _userId: string,
   ): Promise<boolean> => {
     const result = await ProviderProfileModel.findOneAndUpdate(
       { _id: new Types.ObjectId(entityId), isDeleted: false },
       { $addToSet: { "idDetails.fileImageId": fileId } },
-      { new: true }
+      { new: true },
     );
     return result !== null;
   },
@@ -159,11 +157,11 @@ export const providerIdImageConfig: EntityImageConfig = {
   unlinkFromEntity: async (
     entityId: string,
     fileId: Types.ObjectId,
-    _userId: string
+    _userId: string,
   ): Promise<void> => {
     await ProviderProfileModel.updateOne(
       { _id: new Types.ObjectId(entityId), isDeleted: false },
-      { $pull: { "idDetails.fileImageId": fileId } }
+      { $pull: { "idDetails.fileImageId": fileId } },
     );
   },
 
@@ -174,12 +172,12 @@ export const providerIdImageConfig: EntityImageConfig = {
     _fileId: Types.ObjectId,
     entityId: string,
     _userId: string,
-    mongoService: MongoDBFileService
+    mongoService: MongoDBFileService,
   ): Promise<boolean> => {
     const files = await mongoService.getFilesByEntity(
       FileEntityType.PROVIDER_PROFILE,
       entityId,
-      { status: "active" }
+      { status: "active" },
     );
 
     const pendingFiles = files.filter((f) => f.label === "provider_id_image");
@@ -190,10 +188,9 @@ export const providerIdImageConfig: EntityImageConfig = {
     const result = await ProviderProfileModel.findOneAndUpdate(
       { _id: new Types.ObjectId(entityId), isDeleted: false },
       { $addToSet: { "idDetails.fileImageId": { $each: fileIds } } },
-      { new: true }
+      { new: true },
     );
 
     return result !== null;
   },
 };
-

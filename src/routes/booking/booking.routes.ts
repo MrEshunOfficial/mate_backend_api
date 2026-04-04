@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getAllBookings, getBookingStats, getActiveBookings, getBookingsPendingValidation, getDisputedBookings, getBookingByNumber, getBookingByTask, getBookingByServiceRequest, createBookingFromTask, createBookingFromServiceRequest, getBookingsByClient, getBookingsByProvider, getUpcomingBookings, getBookingsByDateRange, getActivitySummary, getBookingById, deleteBooking, startService, completeService, validateCompletion, cancelBooking, rescheduleBooking, updatePaymentStatus, getPaymentSummary, resolveDispute, restoreBooking } from "../../controllers/booking/booking.controller";
+import { getAllBookings, getBookingStats, getActiveBookings, getBookingsPendingValidation, getDisputedBookings, getBookingByNumber, getBookingByTask, getBookingByServiceRequest, createBookingFromTask, createBookingFromServiceRequest, getBookingsByClient, getBookingsByProvider, getUpcomingBookings, getBookingsByDateRange, getActivitySummary, getBookingById, deleteBooking, startService, completeService, validateCompletion, cancelBooking, rescheduleBooking, updatePaymentStatus, getPaymentSummary, resolveDispute, restoreBooking, submitRebuttal } from "../../controllers/booking/booking.controller";
 import { authenticateToken, requireVerification, requireAdmin } from "../../middleware/auth/auth.middleware";
 import { requireCustomerOrProvider, requireCustomer, requireProvider } from "../../middleware/role/role.middleware";
 
@@ -227,6 +227,17 @@ router.post("/:bookingId/validate", requireCustomer, validateCompletion);
  * Ownership is enforced per cancelledBy role.
  */
 router.post("/:bookingId/cancel", requireCustomerOrProvider, cancelBooking);
+
+/**
+ * POST /api/bookings/:bookingId/rebut
+ * Body: { message: string }
+ *
+ * Provider contests a DISPUTED booking with a written rebuttal.
+ * Transition: DISPUTED → REBUTTAL_SUBMITTED
+ * An admin then sees both the client's dispute reason and the provider's
+ * rebuttal before making a final resolution decision.
+ */
+router.post("/:bookingId/rebut", requireProvider, submitRebuttal);
 
 /**
  * POST /api/bookings/:bookingId/reschedule
